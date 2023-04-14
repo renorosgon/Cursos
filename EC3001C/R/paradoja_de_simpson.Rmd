@@ -1,0 +1,382 @@
+---
+title: "La paradoja de Simpson"
+subtitle: "Economía aplicada y ciencia de datos para el bien público"
+author: "Mtro. René Rosado González"
+output: 
+  html_document:
+    theme: paper
+    highlight: haddock
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introducción
+
+A continuación, trabajarás con datos agregados sobre los solicitantes de la escuela de posgrado en Berkeley para los seis departamentos más grandes en 1973. La cuestión es si los datos muestran evidencia de sesgo de género en las prácticas de admisión. En total, hubo 2691 solicitantes masculinos, de los cuales 1198 (44,5%) fueron admitidos, en comparación con 1835 solicitantes femeninas, de las cuales 557 (30,4%) fueron admitidas. Esto da una razón de probabilidad de muestra de 1.83, lo que indica que los hombres tenían casi el doble de probabilidades de ser admitidos.
+
+
+### Librerías
+Carga las librerías de `tidyverse` y `patchwork`. Puedes utilizar el siguiente código de referencia
+
+```{r librerías, message=FALSE, warning=FALSE, eval=FALSE}
+# Instala - Carga tidyverse                                                       
+if(require(___) == FALSE){                                                
+  install.packages('___')                                                 
+  library(___)                                                            
+}else{                                                                          
+  library(___)                                                            
+}
+
+# Instala - Carga patchwork                                                  
+if(require(___) == FALSE){                                                
+  install.packages('___')                                                 
+  library(___)                                                            
+}else{                                                                          
+  library(___)                                                            
+} 
+```
+
+### Los datos
+
+Carga los datos sobre las admisiones. Estos se encuentran disponibles dentro del catálogo de `datasets`.
+```{r datos.0, message=FALSE, warning=FALSE, eval=FALSE}
+admisiones = as_tibble(UCBAdmissions)
+
+# Explora los datos para conocer su estructura
+glimpse(___)
+summary(___)
+```
+
+Observa que los nombres de las columnas combinan mayúsculas y minúsculas. Límpialos utilizando la función `clean_names` de la librería `janitor`. También nota que, al pedir un resumen de variables tipo caracter (`chr`), no obtenemos información relevante. Transforma las variables de tipo caracter a factores utilizando el método de `mutate`
+```{r datos.1, message=FALSE, warning=FALSE, eval=FALSE}
+# Limpieza y manipulación de datos
+admisiones = admisiones %>% 
+  # Limpia los nombre de las columnas con janitor
+  ___ %>% 
+  # Transforma los caracteres a factores
+  ___
+
+# Revisa el resumen del dataset
+___
+```
+
+Genera una gráfica de columnas en la que muestres el número total de personas admitidas y rechazadas por género.
+
+```{r grafica.0, message=FALSE, warning=FALSE, eval=FALSE}
+ggplot(data = ___, aes(___)) +
+  geom_col() 
+```
+
+¿Esta gráfica nos ayuda a responder la pregunta de investigación? 
+
+Genera una gráfica de columnas en la que muestres el porcentaje de personas admitidas y rechazadas por género. Para ello, será necesario que primero generes una nueva variable llamada `pct`. Esta variable la debes crear calculando el porcentaje personas admitidas y rechazadas por grupo de género.
+
+```{r grafica.1, message=FALSE, warning=FALSE, eval=FALSE}
+# Utilizando el tibble de admisiones
+admisiones %>% 
+  # Realiza operaciones por grupo
+  with_groups(
+    # Define el grupo de interés
+    .groups = ___,
+    # Crea una nueva variable
+    mutate,
+    # Define la nueva variable
+    pct = 100 * ___ / ___
+  ) %>% 
+  # Define la estructura de las estéticas 
+  ggplot(aes(x = ___, y = ___, fill = ___)) +
+  # Agrega un gráfico de columna
+  geom_col() 
+```
+
+Este gráfico parece más adecuado para responder nuestra pregunta. Sin embargo tiene algunos detalles que podemos afinar para hacerlo mejor y más informativo. Al final lo guardaremos un objeto llamado `grafico_1`.
+
+```{r grafica.2, message=FALSE, warning=FALSE, eval=FALSE}
+# Utilizando el tibble de admisiones
+grafico_1 = admisiones %>% 
+  # Realiza operaciones por grupo
+  with_groups(
+    # Agrupa por género y estado de admisión
+    .groups = c(___, ___),
+    # Resume las variables
+    summarise,
+    # Calcula el total de personas (suma) por grupo
+    n = ___
+  )
+  # Realiza operaciones por grupo
+  with_groups(
+    # Define el grupo de interés
+    .groups = ___,
+    # Crea una nueva variable
+    mutate,
+    # Define la nueva variable
+    pct = 100 * ___ / ___
+  ) %>% 
+  # Filtra donde el estado de admisión sea solo rechazados
+  filter(___ == ___) %>%  
+  # Define la estructura de las estéticas 
+  ggplot(aes(x = ___, y = ___)) +
+  # Agrega un gráfico de columna y define un color de relleno
+  geom_col(fill = ___) +
+  # Agrega las etiquetas con los porcentajes de cada grupo 
+  geom_text(aes(label = paste0(round(pct,1),'%')), vjust = -1) +
+  # Modifica los límites y cortes del gráfico
+  scale_y_continuous(expand = c(0,0), limits = c(0,100)) +
+  # Selecciona un tema 
+  theme_classic() +
+  theme(
+    # Elimina los títulos de los ejes
+    axis.title = element_blank(),
+    # Modifica la tipografía
+    text = element_text(family = 'Helvetica')
+  ) +
+  # Agrega un título y subtítulo informativos
+  ggtitle('___',
+          subtitle = '___')
+ 
+grafico_1
+```
+
+Si nos quedaramos con este gráfico, pareciera que efectivamente hay un sesgo de género en las admisiones a la universidad. ¿Qué otros elementos habría que considerar para probar esta afirmación? Comenzaremos por revisar la tasa de admisiones por departamento. Puedes utilizar el código del gráfico anterior y remplazar `gender` por `dept` para obtener un gráfico del mismo estilo.
+
+```{r grafica.3, message=FALSE, warning=FALSE, eval=FALSE}
+# Utilizando el tibble de admisiones
+admisiones %>% 
+  # Realiza operaciones por grupo
+  with_groups(
+    # Agrupa por departamento y estado de admisión
+    .groups = c(___, ___),
+    # Resume las variables
+    summarise,
+    # Calcula el total de personas (suma) por grupo
+    n = ___
+  )
+  # Realiza operaciones por grupo
+  with_groups(
+    # Define el grupo de interés
+    .groups = ___,
+    # Crea una nueva variable
+    mutate,
+    # Define la nueva variable
+    pct = 100 * ___ / ___
+  ) %>% 
+  # Filtra donde el estado de admisión sea solo rechazados
+  filter(___ == ___) %>%  
+  # Define la estructura de las estéticas 
+  ggplot(aes(x = ___, y = ___)) +
+  # Agrega un gráfico de columna y define un color de relleno
+  geom_col(fill = ___) +
+  # Agrega las etiquetas con los porcentajes de cada grupo 
+  geom_text(aes(label = paste0(round(pct,1),'%')), vjust = -1) +
+  # Modifica los límites y cortes del gráfico
+  scale_y_continuous(expand = c(0,0), limits = c(0,100)) +
+  # Selecciona un tema 
+  theme_classic() +
+  theme(
+    # Elimina los títulos de los ejes
+    axis.title = element_blank(),
+    # Modifica la tipografía
+    text = element_text(family = 'Helvetica')
+  ) +
+  # Agrega un título y subtítulo informativos
+  ggtitle('___',
+          subtitle = '___')
+```
+
+A partir del gráfico anterior, ¿se te ocurre alguna hipótesis? ¿A qué departamento están aplicando la mayoría de las mujeres? 
+
+```{r grafica.4, message=FALSE, warning=FALSE, eval=FALSE}
+# Calcula el total de hombres que aplicaron a la universidad
+total_hombres = admisiones_clean %>% 
+  # Filtra para quedarte solo con las observaciones de hombres
+  filter(___) %>% 
+  # Resume la variable n en la suma de totales
+  summarise(n = ___) %>% 
+  # Quédate solo con el resultado
+  pull(n)
+
+# Calcula el total de mujeres que aplicaron a la universidad
+total_mujeres = admisiones_clean %>% 
+  # Filtra para quedarte solo con las observaciones de mujeres
+  filter(___) %>% 
+  # Resume la variable n en la suma de totales
+  summarise(n = ___) %>% 
+  # Quédate solo con el resultado
+  pull(n)
+
+# Crea un gráfico con la proporción por género de aplicantes a cada departamento
+grafico_3 = admisiones %>% 
+  # Realiza operaciones por grupo
+  with_groups(
+    # Agrupa por departamento y genero
+    .groups = c(___, ___),
+    # Resume las variables
+    summarise,
+    # Calcula el total de personas (suma) por grupo
+    n = ___
+  )
+  # Realiza operaciones por grupo
+  with_groups(
+    # Agrupa solo por género
+    .groups = ___,
+    # Crea una nueva variable
+    mutate,
+    # Define la nueva variable
+    pct = 100 * ___ / ___
+  ) %>% 
+  # Declara las siguientes estéticas
+  ggplot(
+    aes(
+      # Coloca el departamento en el eje x
+      x = dept, 
+      # Coloca el porcentaje por género en el eje y
+      y = pct, 
+      # Rellena y agrupa por género
+      fill = ___, 
+      group = ___
+      )
+    ) +
+  # Crea un gráfico de columnas
+  geom_col(
+    # Desapila las columnas
+    position = position_dodge(), 
+    # Esconde la leyenda
+    show.legend = FALSE
+    ) +
+  # Agrega las etiquetas
+  geom_text(
+    aes(
+      # Coloca los porcentajes a 1 dígito
+      label = paste0(round(pct,1),'%')
+      ), 
+    # Ajusta la posición de la etiqueta
+    vjust = -1, 
+    position = position_dodge(width = 1),
+    # Ajusta el tamaño
+    size = 3
+    ) +
+  # Agrega una anotación con los totales por grupo
+  annotate(
+    # Anotación de texto
+    geom = 'text', 
+    # Coordenadas de la anotación
+    x = 'A', y = c(37,39), 
+    # Define un color para cada grupo
+    color = c('___','___'),
+    # Agrega las eriquetas
+    label = c(paste0('Male applications: ',total_hombres),
+             paste0('Female applications: ',total_mujeres)),
+    # Alineación del texto
+    hjust = 0.5
+    ) +
+  # Modifica los límites y cortes del gráfico
+  scale_y_continuous(expand = c(0,0), limits = c(0,40)) +
+  # Define un color para cada grupo (asegúrate que estén en el mismo orden)
+  scale_fill_manual(values = c('___','___') +
+  # Selecciona un tema 
+  theme_classic() +
+  theme(
+    # Elimina los títulos de los ejes
+    axis.title = element_blank(),
+    # Modifica la tipografía
+    text = element_text(family = 'Helvetica')
+  ) +
+  # Agrega un título y subtítulo informativos
+  ggtitle('___',
+          subtitle = '___')
+  
+grafico_3
+```
+
+Compara los gráficos 2 y 3. ¿Puedes intuir qué está pasando?
+```{r grafica.5, message=FALSE, warning=FALSE, eval=FALSE}
+grafico_2 / grafico_3
+```
+
+¿Qué pasa cuando tomamos en cuenta las tasas de admisión y rechazo por departamento para cada género?
+```{r grafica.6, message=FALSE, warning=FALSE, eval=FALSE}
+grafico_4 = admisiones %>% 
+  # Realiza operaciones por grupo
+  with_groups(
+    # Agrupa por departamento y genero
+    .groups = c(___, ___),
+    # transforma las variables
+    mutate,
+    # Calcula el porcentaje por grupo
+    pct = ___
+  ) %>% 
+  # Filtra donde el estado de admisión sea solo rechazados
+  filter(___) %>% 
+  # Declara las siguientes estéticas
+  ggplot(
+    aes(
+      # Coloca el departamento en el eje x
+      x = dept, 
+      # Coloca el porcentaje por género en el eje y
+      y = pct, 
+      # Rellena y agrupa por género
+      fill = ___, 
+      group = ___
+      )
+    ) +
+  # Crea un gráfico de columnas
+  geom_col(
+    # Desapila las columnas
+    position = position_dodge(), 
+    # Esconde la leyenda
+    show.legend = FALSE
+    ) +
+  # Agrega las etiquetas
+  geom_text(
+    aes(
+      # Coloca los porcentajes a 1 dígito
+      label = paste0(round(pct,1),'%')
+      ), 
+    # Ajusta la posición de la etiqueta
+    vjust = -1, 
+    position = position_dodge(width = 1),
+    # Ajusta el tamaño
+    size = 3
+    ) +
+  # Agrega una anotación con los totales por grupo
+  annotate(
+    # Anotación de texto
+    geom = 'text', 
+    # Coordenadas de la anotación
+    x = 'A', y = c(97,99), 
+    # Define un color para cada grupo
+    color = c('___','___'),
+    # Agrega las eriquetas
+    label = c(paste0('Male applications: ',total_hombres),
+             paste0('Female applications: ',total_mujeres)),
+    # Alineación del texto
+    hjust = 0.5
+    ) +
+  # Modifica los límites y cortes del gráfico
+  scale_y_continuous(expand = c(0,0), limits = c(0,100)) +
+  # Define un color para cada grupo (asegúrate que estén en el mismo orden)
+  scale_fill_manual(values = c('___','___') +
+  # Selecciona un tema 
+  theme_classic() +
+  theme(
+    # Elimina los títulos de los ejes
+    axis.title = element_blank(),
+    # Modifica la tipografía
+    text = element_text(family = 'Helvetica')
+  ) +
+  # Agrega un título y subtítulo informativos
+  ggtitle('___',
+          subtitle = '___')
+  
+grafico_4
+```
+
+Compara los gráficos 1 y 4. ¿Qué está pasando?
+
+```{r grafica.7, message=FALSE, warning=FALSE, eval=FALSE}
+grafico_1 + grafico_4
+```
+
+Investiga qué es la *Paradoja de Simpson*
