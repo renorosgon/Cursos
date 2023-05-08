@@ -1,0 +1,403 @@
+---
+title: "La Red del Sistema de Transporte Metro"
+author: "MDS. René Rosado González"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: paper
+    highlight: haddock
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introducción
+
+A continuación realizaremos un análisis sobre la red del Sistema de Transporte Colectivo Metro. Para ello, será necesario que descargues la carpeta con la [Ubicación de líneas y estaciones del Sistema de Transporte Colectivo Metro](https://datos.cdmx.gob.mx/dataset/1b014317-ddb1-46c7-ac79-7330c652abe3/resource/288b10dd-4f21-4338-b1ed-239487820512/download/stcmetro_shp.zip) disponible en el [Portal de Datos Abiertos de la CDMX](https://datos.cdmx.gob.mx/). Una vez que la descarga haya finalizado, descomprime la carpeta y colócala en tu directorio de trabajo. Es importante que no modifiques ninguno de los archivos que contiene ya que se trade de un Sistema de Información Georreferenciado (GIS). 
+
+### Librerías
+
+Trabajaremos utilizando el paradigma de `tidyverse` por lo que será necesario que instales y cargues las siguientes librerías
+
+```{r librerias, warning = FALSE, message = FALSE}
+# Instala - carga tidyverse                                                       
+if(require(tidyverse) == FALSE){                                                
+  install.packages('tidyverse')                                                 
+  library(tidyverse)                                                            
+}else{                                                                          
+  library(tidyverse)                                                            
+}
+
+## Para trabajar con datos espaciales
+# Instala - carga sf                                                       
+if(require(sf) == FALSE){                                                
+  install.packages('sf')                                                 
+  library(sf)                                                            
+}else{                                                                          
+  library(sf)                                                            
+}
+# Instala - carga ggsn                                                       
+if(require(ggsn) == FALSE){                                                
+  install.packages('ggsn')                                                 
+  library(ggsn)                                                            
+}else{                                                                          
+  library(ggsn)                                                            
+}
+
+## Para trabajar con grafos
+# Instala - carga igraph                                                       
+if(require(igraph) == FALSE){                                                
+  install.packages('igraph')                                                 
+  library(igraph)                                                            
+}else{                                                                          
+  library(igraph)                                                            
+}
+# Instala - carga tidygraph                                                       
+if(require(tidygraph) == FALSE){                                                
+  install.packages('tidygraph')                                                 
+  library(tidygraph)                                                            
+}else{                                                                          
+  library(tidygraph)                                                            
+}
+# Instala - carga ggraph                                                       
+if(require(ggraph) == FALSE){                                                
+  install.packages('ggraph')                                                 
+  library(ggraph)                                                            
+}else{                                                                          
+  library(ggraph)                                                            
+}
+```
+
+### Datos
+
+Carga el archivo `STC_Metro_estaciones_utm14n.shp` utilizando la función `read_sf` y asígnalo a un objeto llamado `estaciones`. Recuerda que puedes apoyarte en la documentación de la función usando `?read_sf` o consultando la página de la librería [`sf`](https://r-spatial.github.io/sf/)'
+
+```{r estaciones}
+# Carga el archivo con las coordenadas de las estaciones
+estaciones = read_sf('../data/stcmetro_shp/STC_Metro_estaciones_utm14n.shp')  
+# Inspecciona el objeto
+glimpse(estaciones)
+```
+
+Carga el archivo `STC_Metro_estaciones_utm14n.shp` utilizando la función `read_sf` y asígnalo a un objeto llamado `lineas`.
+```{r lineas}
+# Carga el archivo con las coordenadas de las líneas
+lineas = read_sf('../data/stcmetro_shp/STC_Metro_lineas_utm14n.shp')  
+# Inspecciona el objeto
+glimpse(lineas)
+```
+Observa que la columna `LINEA` es distinta en el tibble de `estaciones` y el de `lineas`. Realiza la siguiente corrección removiendo el cero (`0`) utilizando la función `str_remove()`. Asegúrate de utilizar la expresión regular adecuada para no eliminar el número `10`.
+```{r regex}
+estaciones = estaciones %>% 
+  # Remueve los ceros para los número menores a 10
+  mutate(LINEA = str_remove(LINEA,'^0'))
+# Inspecciona el objeto
+glimpse(estaciones)
+```
+### Generar mapas con `ggplot2`
+Para generar mapas con `ggplot2` podemos seguir la misma sintaxis de siempre, solo es necesario trabajar con `geom_sf` para incluir nuestras capas de información.
+
+```{r ggplot2}
+# Crea un lienzo en blanco
+ggplot() +
+  # Agrega la capa de lineas y colorea por LINEA
+  geom_sf(data = lineas, aes(col = LINEA)) + 
+  # Agrega la capa de estaciones y colorea por LINEA
+  geom_sf(data = estaciones, aes(col = LINEA)) +
+  # Modifica la escala de colores con los colores oficiales de cada línea.
+  scale_color_manual(
+    values = c('#E56C93','#B99E51','#0461A9','#AF9E22',
+               '#70B7AE','#FDDF00','#FE0F01','#FF6209',
+               '#088649','#5B2C2B','#A3277C','#77A88D')
+  ) +
+  # Agrega un título y la fuente de tu mapa
+  labs(
+    title = 'CDMX - Sistema de Transporte Colectivo Metro',
+    caption = 'Elaboración propia con datos de CDMX\n@renorosgon'
+       ) +
+  # Dado que estamos trabajando un mapa es importante agregar lo siguiente:
+  # Agrega una rosa de los vientos usando la función `north` de ggsn
+  north(lineas, location = 'topright') +
+  # Agrega una escala cartográfica usando la función `scalebar` de ggsn
+  scalebar(lineas, transform = FALSE, dist_unit = 'km', dist = 1, 
+           location = "bottomleft", st.size = 2) +
+  # Modifica el tema
+  theme_minimal()  +
+  theme(
+    # Elimina las leyendas
+    legend.position = 'none',
+    # Elimina el título de los ejes
+    axis.title = element_blank(),
+    # Modifica la tipografía por tu favorita
+    text = element_text(family = 'Bebas Neue')
+    )
+```
+
+### Construir un una red usando `tidygraph`
+
+Ahora construiremos una red a partir de la información espacial. Comenzaremos por construir los nodos de nuestra red utilizando el tibble con las `estaciones`. Para ello, será necesario hacer las siguientes operaciones:
+```{r nodos,  warning = FALSE, message = FALSE}
+# Crea el objeto nodos
+nodos = estaciones %>% 
+  # Cuenta el número de veces que aparece el NOMBRE de cada estación
+  count(NOMBRE) %>% 
+  # Calcula el centroide de cada estación usando `st_centroid`
+  mutate(geometry = st_centroid(geometry))
+
+# Revisa el resultado
+glimpse(nodos)
+```
+
+Ahora construiremos las relaciones entre las estaciones (`nodos`) con las siguientes operaciones:
+```{r ejes,  warning = FALSE, message = FALSE}
+# Crea el objeto ejes
+ejes = nodos %>% 
+  # Concatena por la izquierda el objeto `estacionees`
+  left_join(
+    # Elimina la geometría del objeto estaciones
+    st_drop_geometry(estaciones), 
+    # Concatena usando la columna nombre
+    by = 'NOMBRE'
+    ) %>% 
+  # Ordena por la clave de la estación
+  arrange(CVE_EST) %>% 
+  # Crear la reación DE - HACIA
+  with_groups(
+    # Agrupa por LINEA
+    .groups = LINEA,
+    # Muta el tibble
+    mutate,
+    # Crea la columna `to` con el NOMBRE de la estación inmediata usando `lead`
+    to = lead(NOMBRE),
+    # Crea la columna `geometry_to` con el NOMBRE de la estación inmediata `lead`
+    geometry_to = lead(geometry),
+  ) %>%
+  # Flitra los NA en la columna `to`
+  filter(!is.na(to)) %>% 
+  mutate(
+    # Crea el eje georreferenciado
+    eje = st_sfc(
+      # Función map2 se lee así
+      map2(
+        # Para coada combinación de .x y .y
+        .x = geometry, .y = geometry_to, 
+        # Aplica la siguiente función
+        .f = ~{st_union(c(.x, .y)) %>% st_cast("LINESTRING")}
+        )
+      )
+    ) %>% 
+  # Selecciona las columna NOMBRE como `from`, y las columnas `to` y `eje
+  select(
+    from = NOMBRE, to , eje
+  ) %>% 
+  # Elimina la geometría original
+  st_drop_geometry() %>% 
+  # Transforma a un nuevo objeto sf con el crs de estaciones
+  st_sf(crs = st_crs(estaciones)) 
+
+# Revisa el resultado
+glimpse(ejes)
+```
+
+A partir de nuestros `nodos` y `ejes` construiremos una `red` no direccionada utilizando `tbl_graph`.
+
+```{r tbl_graph}
+# Crea un objeto tbl_graph
+red = tbl_graph(
+  nodes = nodos,
+  edges = as_tibble(ejes),
+  directed = FALSE
+)
+
+# Luce así
+print(red)
+```
+
+Ahora que tenemos nuestra red, podemos calcular algunos atributos de nuestros nodos y nuestros ejes.
+
+```{r atributos}
+red = red %>% 
+  # Activa los ejes
+  activate(edges) %>% 
+  # Propiedades de los ejes
+  mutate(
+    # Calcula la longitud de cada eje
+    longitud = st_length(eje),
+    # Betweenness: Con qué frecuencia el eje está en el camino más corto
+    betweenness = edge_betweenness(red, weights = longitud)
+  ) %>% 
+  # Activate notes
+  activate(nodes) %>% 
+  # Some node properties
+  mutate(
+    # Grado (vecinos): número de nodos con los que estoy conectado
+    vecinos = degree(red),
+    # Importancia: sum of the weights (importance)
+    importancia = strength(red),
+    # Intermediación(betweenness): Con qué frecuencia el nodo está en el camino más corto
+    betweenness = betweenness(red),
+    # Cercanía: distancia o cercanía con otros nodos
+    cercania = closeness(red)
+  ) 
+
+# Luce así
+print(red)
+```
+### Visualizar una red con `ggraph`
+```{r ggraph, warning = FALSE, message = FALSE}
+# Inicia un lienzo ggraph usando 'lgl' como layout
+ggraph(red, layout = 'lgl') + 
+  # Agrega los ejes
+  geom_edge_link(
+    # Colorea por intermediación (betweenness)
+    aes(col = betweenness), 
+    # Modifica los estilos de los segmentos
+    linewidth = 1, lineend = 'round', alpha = 0.8
+    ) +
+  # Agrega los nodos
+  geom_node_point(
+    # Colorea por intermediación (betweenness) y fija el tamaño por importancia
+    aes(col = betweenness, size = importancia)
+    ) +
+  # Agrega el NOMBRE de cada estación a los nodos
+  geom_node_text(aes(label = NOMBRE), repel = T, family = 'Bebas Neue') +
+  # Modifica el tema
+  theme_graph()
+```
+
+### Pasar de `tidygraph` a `sf` 
+
+Para convertir los elementos de nuestra `red` a objetos `sf`, dado que las geomterías siguen contenidas en el `tbl_graph`, basta con utilizar la función `as_tibble`, seguida de la función `st_as_sf`.
+
+```{r graph_to_sf2, warning = FALSE, message = FALSE}
+# Extraer los nodos como sf
+nodos_red = red %>% 
+  activate(nodes) %>% 
+  as_tibble() %>% 
+  st_as_sf() %>% 
+  # Agregamos la información de las estaciones y lineas
+  left_join(st_drop_geometry(estaciones),by = 'NOMBRE') %>%
+  left_join(st_drop_geometry(lineas), by = c('SISTEMA','LINEA')) %>% 
+  # Modificamos la columna LINEA para homologarla
+  mutate(LINEA = paste0('Línea ', LINEA))
+
+# Luce así
+glimpse(nodos_red)
+```
+
+```{r graph_to_sf, warning = FALSE, message = FALSE}
+# Extraer los ejes como sf
+ejes_red = red %>% 
+  activate(edges) %>% 
+  as_tibble() %>% 
+  st_as_sf() %>% 
+  # Realiza un spatial_join (st_join) con los ejes originales
+  st_join(
+    # Renombra las columnas "from" y "to" agregando el prefijo 'NOMBRE_'
+    rename(ejes, NOMBRE_from = from, NOMBRE_to = to), 
+    # Fija largest = TRUE (revisa ?st_join para entender qué hace)
+    largest = TRUE
+    ) %>% 
+  # Agregamos la información de las estaciones y lineas
+  left_join(
+    st_drop_geometry(select(estaciones, NOMBRE, LINEA)),
+    by = c('NOMBRE_from'='NOMBRE')
+    ) %>%
+  left_join(
+    st_drop_geometry(select(estaciones, NOMBRE, LINEA)),
+    by = c('NOMBRE_to'='NOMBRE'),
+    suffix = c('_from', '_to')
+    ) %>%
+  # Filtra las observaciones de la misma LINEA
+  filter(LINEA_from == LINEA_to) %>% 
+  # Elimina LINEA_to
+  select(-LINEA_to) %>% 
+  # Renombre LINEA_from como LINEA
+  rename(LINEA = LINEA_from) %>% 
+  # Agrega lla información de la línea
+  left_join(st_drop_geometry(lineas), by = 'LINEA')  %>% 
+  # Modificamos la columna LINEA para homologarla
+  mutate(LINEA = paste0('Línea ', LINEA))
+
+# Luce así
+glimpse(ejes_red)
+```
+
+Podemos replicar el grafo anterior aprovechando las coordenadas de nuestro sistema.
+
+```{r ggraph_sf, warning = FALSE, message = FALSE}
+# Inicia un lienzo ggplot2
+ggplot() + 
+  # Agrega los ejes
+  geom_sf(data = ejes_red,
+    # Colorea por intermediación (betweenness)
+    aes(col = betweenness), 
+    # Modifica los estilos de los segmentos
+    linewidth = 1, lineend = 'round', alpha = 0.8
+    ) +
+  # Agrega los nodos
+  geom_sf(data = nodos_red,
+    # Colorea por intermediación (betweenness) y fija el tamaño por importancia
+    aes(col = betweenness, size = importancia)
+    ) +
+  # Agrega el NOMBRE de cada estación a los nodos
+  geom_sf_text(data = nodos_red, aes(label = NOMBRE), family = 'Bebas Neue') +
+  # Modifica el tema
+  theme_bw()
+```
+
+Ahora podemos jugar con la estética
+
+```{r grafo_final, warning = FALSE, message = FALSE}
+# Inicia un lienzo ggplot2
+ggplot() + 
+  # Agrega los ejes
+  geom_sf(data = ejes_red,
+    # Colorea por LINEA y define el grosor por intermediación (betweenness)
+    aes(linewidth = betweenness, col = LINEA), 
+    # Modifica los estilos de los segmentos
+    linewidth = 1, lineend = 'round', alpha = 0.8
+    ) +
+  # Agrega los nodos
+  geom_sf(data = nodos_red,
+    # Colorea por LINEA y define el grosor por intermediación (betweenness)
+    aes(col = LINEA, size = betweenness)
+    ) +
+  # Agrega el NOMBRE de cada estación a los nodos
+  geom_sf_text(data = nodos_red, aes(label = NOMBRE), 
+               family = 'Bebas Neue', size = 2) +
+  # Modifica la escala de colores con los colores oficiales de cada línea.
+  scale_color_manual(
+    values = c('#E56C93','#B99E51','#0461A9','#AF9E22',
+               '#70B7AE','#FDDF00','#FE0F01','#FF6209',
+               '#088649','#5B2C2B','#A3277C','#77A88D')
+  ) +
+  # Modifica el rango de tamaños
+  scale_size(range = c(0,6)) +
+  # Expande los Ejes
+  scale_x_continuous(expand = c(0.01,0.01)) +
+  scale_y_continuous(expand = c(0.01,0.01)) +
+  # Agrega un título y la fuente de tu mapa
+  labs(
+    title = 'CDMX - Sistema de Transporte Colectivo Metro',
+    subtitle = 'Centralidad intermediación por estación',
+    caption = 'Elaboración propia con datos de CDMX\n@renorosgon'
+       ) +
+  # Dado que estamos trabajando un mapa es importante agregar lo siguiente:
+  # Agrega una rosa de los vientos usando la función `north` de ggsn
+  north(nodos_red, location = 'topright') +
+  # Agrega una escala cartográfica usando la función `scalebar` de ggsn
+  scalebar(nodos_red, transform = TRUE, dist_unit = 'km', dist = 1, 
+           location = "bottomleft", st.size = 2) +
+  # Modifica el tema
+  theme_minimal()  +
+  theme(
+    # Elimina las leyendas
+    legend.position = 'none',
+    # Elimina el título de los ejes
+    axis.title = element_blank(),
+    # Modifica la tipografía por tu favorita
+    text = element_text(family = 'Bebas Neue')
+    )
+```

@@ -1,0 +1,408 @@
+---
+title: "La mano invisible del mercado... en R"
+subtitle: "Economía aplicada y ciencia de datos para el bien público"
+author: "Mtro. René Rosado González"
+output: 
+  html_document:
+    theme: paper
+    highlight: haddock
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introducción
+
+¿Existen los agentes racionales? ¿La inteligencia de los agentes determina los equilibrios de mercado?
+
+En 1993, Dhananjay Gode y Shyam Sunder publicaron un modelo computacional de agentes simples que comercian según reglas simples. Más allá de estas reglas, los agentes carecían de conocimientos o estrategias sofisticados para maximizar su utilidad. Se podría decir que estaban negociando al azar. Sorprendentemente, de estas interacciones semialeatorias surgieron curvas que se asemejaban a la oferta y la demanda agregadas al
+formar las simulaciones. Esto sugirió que, quizás, hay mucho más en la dinámica económica que solo agentes racionales. Quizás, el papel de instituciones como el mercado y los protocolos a través de los cuales interactúan los agentes son críticos para entender la economía. Esta idea cuestionaría entonces la relevancia del agente racional y si los economistas preferirían centrarse en las instituciones y los procesos. En este ejercicio programarás una versión modificada del modelo de Gode y Sunder (1993), que ahora se conoce popularmente como *Zero-Intelligence Traders*.
+
+Te recomiendo leer el paper:
+
+[Gode, D. K., & Sunder, S. (1993). Allocative efficiency of markets with zero-intelligence traders: Market as a partial substitute for individual rationality. Journal of political economy, 101(1), 119-137.](http://194.145.208.139/ANTI/ARTICLES/1993-02%20(ZIC)%20Gode%20and%20Sunder-JPE%20-19p.pdf)
+
+### Librerías
+Carga e instala las librerías de `tidyverse` y `progress`. Puedes utilizar el siguiente código de referencia
+
+```{r librerías, message=FALSE, warning=FALSE}
+# Instala - Carga tidyverse                                                       
+if(require(tidyverse) == FALSE){                                                
+  install.packages('tidyverse')                                                 
+  library(tidyverse)                                                            
+}else{                                                                          
+  library(tidyverse)                                                            
+}
+
+# Instala - Carga progress                                                  
+if(require(progress) == FALSE){                                                
+  install.packages('progress')                                                 
+  library(progress)                                                            
+}else{                                                                          
+  library(progress)                                                            
+} 
+```
+
+### Setup
+
+Para poder simular tu mercado necesitas definir algunos parámetros iniciales:
+
+Define una variable `poblacion` que sea igual `1000`
+```{r poblacion, message=FALSE, warning=FALSE}
+poblacion = 1000
+```
+
+Define una variable `umbral` que sea igual `0.5`
+```{r umbral, message=FALSE, warning=FALSE}
+umbral = 0.5
+```
+
+Ahora construirás a los *Zero-Intelligence Traders*. Crea un `tibble` llamado `agentes` con las siguiente información:
+
+1. Un vector columna `id` que sea una sequencia de 1 hasta el número que asignaste en población. Este `id` nos permitirá identificar a cada agente.
+2. Un vector columna `precio_compra`, que contenga numeros aleatorios distribuidos uniformemente (un número distinto para cada agente) entre 0 y 1 . Este es el precio de reserva que tienen los agentes para comprar un producto. 
+3. Un vector columna `precio_venta` que contenga numeros aleatorios distribuidos uniformemente (un número distinto para cada agente) entre 0 y 1. Este es el precio de reserva que tienen los agentes para vender un producto.
+
+```{r agentes, message=FALSE, warning=FALSE}
+# Crea un tibble de agentes
+agentes = tibble(
+  # Cada agente tiene un id único
+  id = 1:poblacion,
+  # Cada agente tiene un precio de compra de reserva
+  precio_compra = runif(poblacion),
+   # Cada agente tiene un precio de venta de reserva
+  precio_venta = runif(poblacion)
+)
+```
+
+Ahora, asignarás aleatoriamente a cada agente como un vendedor o como un comprador. Para ello, crea un vector llamado `asignacion_aleatoria` que compare una distribución uniforme entre 0 y 1, con la misma longitud que el número de agentes, y compáralo con el `umbral`. 
+
+Una vez construído el vector, utilízalo como índice para crear un tibble de compradores y uno de vendedores. Los compradores son los agentes cuya `asignacion_aleatoria` sea verdadera (`TRUE`). Los vendedores son los agentes cuya `asignacion_aleatoria` es falsa (`FALSE`)
+
+```{r asignacion, message=FALSE, warning=FALSE}
+# Define un corte aleatorrio
+asignacion_aleatoria = runif(poblacion) < umbral
+# Asigna compradores
+compradores = agentes[asignacion_aleatoria,]
+# Asigna vendedores (tip usa la negación del vector para invertirlo)
+vendedores = agentes[!asignacion_aleatoria,]
+```
+
+Ahora construye los siguientes vectores vacíos en los que estaremos almacenando los resultados de nuestra simulación:
+
+- `precios` : aquí almacenaremos los precios a los que se realizan las transacciones.
+- `precios_compra` : aquí almacenaremos los precios de reserva que tienen los compradores que realizan las transacciones.
+- `precios_venta` : aquí almacenaremos los precios de reserva que tienen los vendedores que realizan las transacciones.
+
+```{r variables, message=FALSE, warning=FALSE}
+# Define los vectores vacios
+precios = c()
+precios_compra = c()
+precios_venta = c()
+transacciones = c()
+```
+
+Por último, crea un vector llamado `periodos` en el que almacenes una secuencia de números del `1` al `10000`
+
+```{r periodos, message=FALSE, warning=FALSE}
+# Define el numero de periodos
+periodos = 1:10000
+```
+
+### Simulación
+
+Ahora generaremos una simulación de nuestro mercado a lo largo de `10000` períodos. Para ello sigue las instrucciones para completar el siguiente código
+
+```{r simulacion, message=FALSE, warning=FALSE}
+# Define una barra de progreso 
+progreso = progress_bar$new(total = max(periodos))
+
+# Itera para cada periodo en periodos
+for (periodo in periodos){
+  
+  # Extrae un comprador de forma aleatoria
+  comprador = sample_n(compradores, 1)
+  # Extrae el precio de reserva del comprador
+  precio_compra = pull(comprador, precio_compra)
+  # Define la puja que el comprador está dispuesto a hacer 
+  puja = runif(1) * precio_compra
+   
+  # Extrae un vendedor de forma aleatoria
+  vendedor = sample_n(vendedores, 1)
+  # Extrae el precio de reserva del vendedor
+  precio_venta = pull(vendedor, precio_venta)
+  
+  # Almacena el precio de puja
+  precios = append(precios, puja)
+  # Almacena el precio de compra
+  precios_compra = append(precios_compra, precio_compra)
+  # Almacena el precio de venta
+  precios_venta = append(precios_venta, precio_venta)
+  
+  # Si la puja es mayor que el precio de reserva
+  if (puja >= precio_venta){
+    # Agrega un TRUE al vector de trransacciones
+    transacciones = append(transacciones, TRUE)
+    
+    # Modifica el tibble de compradores
+    compradores = compradores %>% 
+      # Remueve al comprador actual
+      subset(id != pull(comprador, id)) %>% 
+      # Agrega al vendedor actual
+      bind_rows(vendedor)
+    
+    # Modifica el tibble vendedores
+    vendedores = vendedores %>% 
+      # Remueve al vendedor actual
+      subset(id != pull(vendedor, id)) %>% 
+      # Agrega al comprador actual
+      bind_rows(comprador)
+    
+    # Si el precio de puja es menor al precio de reserva
+  } else { 
+    # No se realiza la transaccion, por lo tanto se registra como FALSE
+    transacciones = append(transacciones, FALSE)
+  }
+  # Actualiza la barra de progreso
+  progreso$tick()
+}
+```
+
+### Análisis de resultados
+
+Concatena los vectores obtenidos (`transacciones`,`precios`, `precios_compra`, `precios_venta`) en un tibble llamado `resultados`
+```{r resultados, message=FALSE, warning=FALSE}
+# Define el numero de periodos
+resultados = tibble(
+  transacciones = transacciones,
+  precios = precios,
+  precios_compra = precios_compra,
+  precios_venta = precios_venta
+)
+```
+
+Realiza los siguientes gráficos para analizar los patrones. Recuerda que todo buen gráfico debe ser visualmente atractivo, incluir un título y leyendas claras :
+
+- Crea un histograma con los `precios`. 
+```{r hist_precios, message=FALSE, warning=FALSE}
+# Utiliza los resultados de la simulación
+resultados %>% 
+  # Grafica los precios
+  ggplot(aes(x = precios)) +
+  geom_histogram(bins = 30, col = 'white', fill = 'darkred') +
+  # Agrega títulos
+  ggtitle('La distribución de precios se concentra por debajp de 0.5',
+          subtitle = 'Conteo') +
+  # Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Bebas Neue'),
+    # Elimina los títulos
+    axis.title.y = element_blank(),
+  )
+```
+
+- Crea un histograma únicamente con los `precios` de las transsacciones exitosas.
+```{r hist_precios_true, message=FALSE, warning=FALSE}
+# Utiliza los resultados de la simulación
+resultados %>% 
+  # Flitra las transacciones exitosas
+  filter(transacciones == TRUE) %>% 
+  # Grafica los precios
+  ggplot(aes(x = precios)) +
+  geom_histogram(bins = 30, col = 'white', fill = 'darkred') +
+  # Agrega títulos
+  ggtitle('Distribución de los precios transaccionados',
+          subtitle = 'Conteo') +
+  #  Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Bebas Neue'),
+    # Cambia los títulos
+    axis.title.y = element_blank(),
+    legend.position = 'none'
+  )
+```
+
+¿Qué similitudes y diferencias hay entre estas distribuciones?
+
+- Agrega una nueva variable llamada `beneficios` compuesta de la diferencia entre `precios` y `precios_venta`. Grafica los resultados para las transacciones exitosas, ordenando de menor a mayor los beneficios. Te recomiendo usar un gráfico de puntos o un gráfico de lineas. (*Tip: Coloca la variable `beneficios` en el eje de las `y`. En el eje de las `x` coloca una secuencia del `1` hasta el nùmero de transacciones exitosas*)
+```{r beneficios}
+# Utiliza los resultados
+resultados = resultados %>% 
+  # Agrega una nueva variable
+  mutate(beneficios = precios - precios_venta)
+
+# Calcula las transacciones totales
+transacciones_exitosas_totales = sum(pull(resultados,transacciones))
+
+# Utiliza los resultados de la simulación
+resultados %>% 
+  # Flitra las transacciones exitosas
+  filter(transacciones == TRUE) %>% 
+  # Grafica los beneficios ordenados
+  ggplot(aes(y = sort(beneficios), x = 1:transacciones_exitosas_totales)) +
+  geom_col(fill = 'darkblue', alpha = 0.75) +
+  xlab('Número de transacción') +
+  # Agrega títulos
+  ggtitle('Beneficios de los oferentes derivados de las transacciones',
+          subtitle = 'Diferencia entre precios de mercado y precios de reserva') +
+  #  Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Bebas Neue'),
+    # Cambia los títulos
+    axis.title.y = element_blank(),
+    legend.position = 'none'
+  )
+```
+
+- Agrega una nueva variable llamada `brecha` compuesta de la diferencia entre `precios_compra` y `precios_venta`. Grafica los resultados para todas las observaciones, ordenando de mayor a menor los beneficios. Te recomiendo usar un gráfico de puntos o un gráfico de lineas.(*Tip: Coloca la variable `brecha` en el eje de las `y`. En el eje de las `x` coloca una secuencia del `1` hasta el nùmero de observaciones*)
+```{r brechas}
+# Utiliza los resultados
+resultados = resultados %>% 
+  # Agrega una nueva variable
+  mutate(brecha = precios_compra - precios_venta)
+
+
+# Utiliza los resultados de la simulación
+resultados %>% 
+  # Grafica los beneficios ordenados
+  ggplot(aes(y = desc(sort(brecha)), x = 1:nrow(resultados))) +
+  geom_point(col = 'darkred', alpha = 0.75) +
+  xlab('Número de periodos') +
+  # Agrega títulos
+  ggtitle('Brecha entre los precios de compra y venta',
+          subtitle = 'Diferencia entre los precios de compra y venta') +
+  #  Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Bebas Neue'),
+    # Cambia los títulos
+    axis.title.y = element_blank(),
+    legend.position = 'none'
+  )
+```
+
+
+¿A qué te recuerdan estas dos curvas?
+
+- Crea un gráfico de dispersión para todas las transacciones exitosas. En el eje de las `y` coloca los `precios`. En el eje de las `x` coloca `precios_compra` y `precios_venta` (utiliza una geometría para cada uno) y diferencialos por color.
+
+```{r excedentes}
+# Utiliza los resultados de la simulación
+resultados %>% 
+  # Flitra las transacciones exitosas
+  filter(transacciones == TRUE) %>% 
+  # Grafica los beneficios ordenados
+  ggplot(aes(y = precios)) +
+  geom_point(aes(x = precios_compra, col = 'Compradores'), alpha = 0.75)+
+  geom_point(aes(x = precios_venta, col = 'Vendedores'), alpha = 0.75) +
+  labs(x = 'Precios de Reserva', col = 'Agentes') +
+  # Agrega títulos
+  ggtitle('Excedentes del Consumidor y Productor',
+          subtitle = 'Precios de Mercado') +
+  # Cambia los colores
+  scale_color_manual(values = c('darkred','darkblue')) +
+  #  Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Bebas Neue'),
+    # Cambia los títulos
+    axis.title.y = element_blank(),
+    legend.position = 'bottom'
+  )
+```
+
+¿Qué representa lo que acabas de graficar?
+
+- Ordena tus datos con base en la variable `brecha`, ordenándola de mayor a menor, y grafíca para todas las transacciones exitosas el `precios_compra` y `precios_venta` en el eje `y` (utiliza una geometría para cada uno) diferencialos por color. En el eje de las `x` coloca una secuencia del `1` hasta el nùmero de transacciones exitosas.
+
+```{r oferta_demanda}
+# Utiliza los resultados de la simulación
+resultados %>% 
+  # Flitra las transacciones exitosas
+  filter(transacciones == TRUE) %>% 
+  # Ordena por brecha de mayor a menor
+  arrange(desc(brecha)) %>%
+  # Grafica los beneficios ordenados
+  ggplot(aes(x = 1:transacciones_exitosas_totales)) +
+  geom_point(aes(y = precios_compra, col = 'Compradores'), alpha = 0.75)+
+  geom_point(aes(y = precios_venta, col = 'Vendedores'), alpha = 0.75) +
+  labs(x = 'Precios de Reserva', col = 'Agentes') +
+  # Agrega títulos
+  ggtitle('Ofertas y demandas de los Zero-Intelligence Traders',
+          subtitle = 'Precios de Mercado') +
+  # Cambia los colores
+  scale_color_manual(values = c('darkred','darkblue')) +
+  #  Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Bebas Neue'),
+    # Cambia los títulos
+    axis.title.y = element_blank(),
+    legend.position = 'bottom'
+  )
+```
+
+¿Notas algún patrón familiar con la teoría económica?
+
+- Por último ejecuta la siguiente línea de código
+
+```{r g8, message=FALSE, warning=FALSE}
+# Utiliza los resultados
+resultados %>% 
+  # Coloca las brechas ordenadas en 100 cajitas (bins)
+  mutate(bins = ntile(desc(brecha), n = 100)) %>% 
+  # Agrupa por bins
+  with_groups(
+    .groups = bins,
+    summarise,
+    # Calcula los precios de reserva promedio
+    precios_compra = mean(precios_compra),
+    precios_venta = mean(precios_venta)) %>% 
+  # Grafica los bins
+  ggplot(aes(x = bins)) + 
+  # Agrega los puntos de precios de compra (demanda) 
+  geom_point(aes(y = precios_compra, col = 'Demanda'), alpha = 0.25)+
+  # Agrega  los puntos de precios de venta (oferta) 
+  geom_point(aes(y = precios_venta, col = 'Oferta'), alpha = 0.25) +
+  # Agrega una curva de demanda
+  stat_smooth(aes(y = precios_compra, col = 'Demanda'), se = F)+
+  # Agrega una curva de oferta
+  stat_smooth(aes(y = precios_venta, col = 'Oferta'), se = F) +
+  # Modifica la estética de los ejes
+  scale_y_continuous(breaks = seq(0,1,0.1)) +
+  scale_x_continuous(expand = c(0,0)) +
+  xlab('Cantidades') +
+  # Modifica los colores
+  scale_color_manual(values = c('darkred','darkblue')) +
+  # Agrega títulos
+  ggtitle('Un mercado con Zero-Intelligence Traders',
+          subtitle = 'Precios') +
+  #  Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Bebas Neue'),
+    # Cambia los títulos
+    axis.title.y = element_blank(),
+    legend.position = 'none'
+  )
+```
+
+En conclusión ¿los equilibrios de mercado dependen de agentes perfectamente racionales? Te invito a repetir el ejercicio jugando con los valores del parámetro `umbral`. Recuerda que este solo puede tomar valores estrictamente mayores a `0` y estrictamente menores que `1`.
