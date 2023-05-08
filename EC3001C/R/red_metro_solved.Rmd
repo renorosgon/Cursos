@@ -357,24 +357,32 @@ ggplot() +
     # Colorea por LINEA y define el grosor por intermediación (betweenness)
     aes(linewidth = betweenness, col = LINEA), 
     # Modifica los estilos de los segmentos
-    linewidth = 1, lineend = 'round', alpha = 0.8
+    lineend = 'round', alpha = 0.8
     ) +
-  # Agrega los nodos
-  geom_sf(data = nodos_red,
-    # Colorea por LINEA y define el grosor por intermediación (betweenness)
-    aes(col = LINEA, size = betweenness)
-    ) +
-  # Agrega el NOMBRE de cada estación a los nodos
-  geom_sf_text(data = nodos_red, aes(label = NOMBRE), 
-               family = 'Bebas Neue', size = 2) +
   # Modifica la escala de colores con los colores oficiales de cada línea.
   scale_color_manual(
     values = c('#E56C93','#B99E51','#0461A9','#AF9E22',
                '#70B7AE','#FDDF00','#FE0F01','#FF6209',
                '#088649','#5B2C2B','#A3277C','#77A88D')
   ) +
+  # Agrega los nodos
+  geom_sf(data = nodos_red,
+    # Colorea por LINEA y define el grosor por intermediación (betweenness)
+    aes(fill = LINEA, size = betweenness), 
+    # Modifica la forma para tener puntos con contornos blancos
+    shape = 21, col = 'white'
+    ) +
+  # Modifica la escala de colores con los colores oficiales de cada línea.
+  scale_fill_manual(
+    values = c('#E56C93','#B99E51','#0461A9','#AF9E22',
+               '#70B7AE','#FDDF00','#FE0F01','#FF6209',
+               '#088649','#5B2C2B','#A3277C','#77A88D')
+  ) +
+  # Agrega el NOMBRE de cada estación a los nodos
+  geom_sf_text(data = nodos_red, aes(label = NOMBRE), 
+               family = 'Bebas Neue', size = 2) +
   # Modifica el rango de tamaños
-  scale_size(range = c(0,6)) +
+  scale_size(range = c(0,8)) +
   # Expande los Ejes
   scale_x_continuous(expand = c(0.01,0.01)) +
   scale_y_continuous(expand = c(0.01,0.01)) +
