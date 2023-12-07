@@ -1,0 +1,327 @@
+---
+title: "Aequitas"
+author: "MDS. René Rosado González"
+output: 
+  html_document:
+    theme: paper
+    highlight: haddock
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+
+Load, and install if necessary, the `tidyverse` and `tidymodels` libraries, as well as the `discrim` package.
+
+
+```{r libraries, warning = FALSE, message = FALSE}
+# Install - load tidyverse                                                       
+if(require(tidyverse) == FALSE){                                                
+  install.packages('tidyverse')                                                 
+  library(tidyverse)                                                            
+}else{                                                                          
+  library(tidyverse)                                                            
+}
+# Install - load tidymodels                                                       
+if(require(tidymodels) == FALSE){                                                
+  install.packages('tidymodels')                                                 
+  library(tidymodels)                                                            
+}else{                                                                          
+  library(tidymodels)                                                            
+}
+# Install - load discrim                                                       
+if(require(discrim) == FALSE){                                                
+  install.packages('discrim')                                                 
+  library(discrim)                                                            
+}else{                                                                          
+  library(discrim)                                                            
+}
+```
+
+## Dataset
+
+Load the `compas_train.csv` file.
+
+```{r data, warning = FALSE, message = FALSE}
+# Read csv
+data = read_csv('../data/compas_train.csv') %>% 
+  # Change characters to factors
+  mutate(
+    sex = factor(sex, levels = c('Male','Female')),
+    age_cat = factor(age_cat, levels = c("Less than 25","25 - 45","Greater than 45"), ordered = TRUE),
+    race = factor(race),
+    score_text = factor(score_text, levels = c('Low','High'), ordered = TRUE),
+    c_charge_degree = factor(c_charge_degree)
+  ) %>% 
+  # Order by compas_screening_date
+  arrange(compas_screening_date)
+
+# Look like this
+glimpse(data)
+```
+
+
+Create the `train` and `test` splits; as well as the training `folds` following the `rolling_origin` methodology.
+
+```{r grafica.1, message=FALSE, warning=FALSE}
+# Make a time split
+data_split = initial_time_split(data = data)
+# Get train data
+train = training(data_split)
+# Get test data
+test = testing(data_split)
+
+# Create rolling origin folds
+folds = rolling_origin(
+  train,
+  initial = 1200,
+  assess = 300,
+  cumulative = FALSE,
+  skip = 300
+  )
+```
+
+Create a `recipe`
+
+```{r grafica.3, message=FALSE, warning=FALSE}
+recipe = recipe(
+  formula = score_text ~ id + sex + age_cat + race + c_charge_degree + length_of_stay + two_year_recid + juv_fel_count + juv_misd_count + juv_other_count + priors_count_ + days_b_screening_arrest, 
+  data = train
+) %>% 
+  update_role(id, new_role = 'ID') %>% 
+  step_dummy(all_nominal_predictors()) 
+```
+
+## Models
+
+```{r grafica.2, message=FALSE, warning=FALSE}
+# GLMNet
+glmnet = logistic_reg() %>% 
+  set_engine('glmnet') %>% 
+  set_mode('classification') %>% 
+  set_args(
+    penalty = tune(),
+    mixture = tune()
+    )
+
+# Random Forest
+random_forest = rand_forest() %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification") %>% 
+  set_args( 
+    mtry = tune(),
+    trees = tune(),
+    min_n = tune()
+    )
+
+# Naive Bayes
+naive_bayes = naive_Bayes() %>% 
+  set_mode("classification") %>% 
+  set_engine("naivebayes")  %>% 
+  set_args(
+    Laplace = tune(),
+    smoothness = tune()
+  )
+
+```
+
+
+## Workflow tuning
+
+```{r grafica.4, message=FALSE, warning=FALSE}
+# If you want to use parallel computing
+doParallel::registerDoParallel(cl = parallel::detectCores() - 1)
+
+# Define a workflow_set
+compas_workflow = workflow_set(
+  # Recipes
+  preproc = list(recipe = recipe),
+  # Models
+  models = list(
+    glmnet = glmnet,
+    random_forest = random_forest,
+    naive_bayes = naive_bayes
+  )
+) %>% 
+  # Fit resamples
+  workflow_map(
+    resamples = folds,
+    grid = 100,
+    verbose = TRUE
+  )
+
+doParallel::stopImplicitCluster()
+
+# The final ranking
+autoplot(compas_workflow, metric = "roc_auc")
+```
+
+## Select the best algorithm
+
+```{r grafica.5, message=FALSE, warning=FALSE}
+# Select the best algorithm
+best_algorithm = rank_results(compas_workflow, rank_metric = "roc_auc") %>% 
+  filter(rank == 1, .metric == "roc_auc") %>% 
+  pull(wflow_id)
+
+print(best_algorithm)
+```
+
+```{r grafica.6, message=FALSE, warning=FALSE}
+# Select best model
+best_model = compas_workflow %>% 
+  extract_workflow_set_result(best_algorithm) %>% 
+  select_best('roc_auc') 
+```
+
+## Last fit
+
+```{r grafica.7, message=FALSE, warning=FALSE}
+# Finalize workflow
+compas_model = compas_workflow %>% 
+  extract_workflow(best_algorithm)  %>%  
+  finalize_workflow(best_model) %>% 
+  last_fit(data_split)
+
+# Collect test mestrics
+collect_metrics(compas_model)
+```
+
+```{r grafica.8, message=FALSE, warning=FALSE}
+cunfusion_matrix = compas_model %>% 
+  extract_workflow() %>% 
+  augment(data) %>% 
+  conf_mat(truth = score_text, estimate = .pred_class)
+
+autoplot(cunfusion_matrix, type ='heatmap')
+```
+
+## Fitting new data
+
+```{r grafica.10, message=FALSE, warning=FALSE}
+# Read new data
+new_data = read_csv('../data/compas_test.csv') %>% 
+  rename(priors_count_ = priors_count) %>% 
+  mutate(
+    sex = factor(sex, levels = c('Male','Female')),
+    age_cat = factor(age_cat, levels = c("Less than 25","25 - 45","Greater than 45"), ordered = TRUE),
+    race = factor(race),
+    c_charge_degree = factor(c_charge_degree)
+  ) %>% 
+  arrange(compas_screening_date)
+
+# Make predictions for the new data
+predictions = compas_model %>% 
+  extract_fit_parsnip() %>% 
+  predict(recipe %>% prep() %>% bake(new_data = new_data)) 
+
+predictions = new_data %>% 
+  bind_cols(predictions) %>% 
+  select(id,.pred_class)
+
+# Save the results
+write_excel_csv(predictions, 'A01334554.csv')
+```
+
+## The grading (validation)
+
+```{r grafica.11, message=FALSE, warning=FALSE}
+read_csv('../data/compas_test_ids.csv') %>% 
+  left_join(predictions) %>% 
+  summarise(grade = mean(score_text == .pred_class))
+```
+
+## Aequitas
+
+```{r grafica.12, message=FALSE, warning=FALSE}
+# Add predictions
+data = compas_model %>% 
+  extract_workflow() %>% 
+  augment(data)
+```
+
+```{r grafica.13, message=FALSE, warning=FALSE}
+# This function will calculate metrics by group
+metrics = function(df, group){
+  df = df %>% 
+    with_groups(
+      .groups = group,
+      summarise,
+      pp = sum(.pred_class == 'High'),
+      pn = sum(.pred_class == 'Low'),
+      fp = sum(.pred_class == 'High' & score_text == 'Low'),
+      fn = sum(.pred_class == 'Low' & score_text == 'High'),
+      tp = sum(.pred_class == 'High' & score_text == 'High'),
+      tn = sum(.pred_class == 'Low' & score_text == 'Low'),
+      group_label_pos = sum(score_text == 'High'),
+      group_label_low = sum(score_text == 'Low'),
+      group_size = n(),
+      total_entities = nrow(df),
+      tpr =  tp / (tp + fn),
+      tnr = tn / (tn + fp),
+      `for` = fn / (tn + fn),
+      fdr = tp / (tp + fp),
+      fpr = fp / (tn + fp),
+      fnr = fn / (tp + fn),
+      ppv = 1 - fdr
+    )%>% 
+    rename(case = group) %>% 
+    mutate(case = as.character(case),
+           cat = group)
+  
+  return(df)
+}
+```
+
+```{r grafica.14, message=FALSE, warning=FALSE}
+# Apply the function to each group
+results = map_df(
+  .x = c('race','sex','age_cat'),
+  .f = metrics,
+  df = data
+)  %>% 
+  gather(metric, value, -case, - cat)
+
+DT::datatable(results)
+```
+
+
+```{r grafica.15, message=FALSE, warning=FALSE}
+# Calculate disparity
+disparity = results %>% 
+  # These are the base cases
+  filter(case %in% c('Caucasian','Less than 25','Male')) %>% 
+  select(-case) %>% 
+  left_join(results, by = c('cat', 'metric'),
+             suffix = c('_base','_group')) %>% 
+  mutate(
+    disparity = value_group /value_base,
+    significance = ifelse(disparity > 1.25 | disparity < 0.75, TRUE, FALSE)
+    ) 
+
+DT::datatable(disparity)
+```
+
+```{r grafica.16, message=FALSE, warning=FALSE}
+# Get filter metrics
+filter = disparity %>% 
+  filter(cat == 'race', disparity == TRUE) %>% 
+  pull(metric) %>% 
+  unique()
+
+# Create a plot
+disparity %>% 
+  filter(metric %in% filter, cat == 'race') %>% 
+  ggplot(aes(x = disparity, y = reorder(case, disparity), fill = significance)) +
+  geom_col(position = 'dodge', show.legend = FALSE) +
+  geom_vline(xintercept = c(0.75,1.25)) +
+  facet_wrap(~metric, scales = 'free') +
+  labs(title = 'Aequitas Analysis by Race') +
+  theme_bw() +
+  theme(
+    axis.title = element_blank()
+  )
+```
+
