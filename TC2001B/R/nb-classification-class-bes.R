@@ -56,6 +56,7 @@ summary(bes)
 # It looks tidier
 glimpse(bes)
 
+# install.packages('GGally')
 # Pairplot
 GGally::ggpairs(bes)
 
@@ -222,7 +223,7 @@ prob_leave_given_ed_1 = prob_leave_education_1 / prob_ed_1
 print(prob_leave_given_ed_1)
 
 # Naive Bayes with tidymodels -----------------------------------------------------
-# install.packages('klaR','discrim')
+install.packages(c('klaR','discrim'))
 library(discrim)
 # Creating a model specification object
 nb_model = naive_Bayes() %>% 
@@ -260,6 +261,12 @@ confusion_matrix = predictions_tb %>%
 
 print(confusion_matrix)
 
+bes %>% 
+  # Count observations
+  count(vote, education) %>% 
+  spread(vote, n)
+
+
 # The machine learning framework ------------------------------------------
 bes = read_csv('data/BES.csv') %>% 
   # Filter the NA in the leave column
@@ -286,7 +293,7 @@ bes_testing = testing(bes_split)
 
 # Create cross-validation folds
 set.seed(123)
-bes_folds = vfold_cv(bes_training, v = 3)
+bes_folds = vfold_cv(bes_training, v = 5)
 
 # Create a recipe
 basic_recipe = recipe(
@@ -341,7 +348,7 @@ tunning_metrics = nb_tuning %>%
 
 # Select the best model
 best_nb = nb_tuning %>%
-  select_best("accuracy")
+  select_best("roc_auc")
 
 print(best_nb)
 
@@ -383,6 +390,8 @@ predictions_tb %>%
 ggplot(predictions_tb, aes(x = age)) +
   # Add the observations
   geom_point(aes(y = .pred_leave, col = education)) + 
+  # Modificar el eje y
+  scale_y_continuous(limits = c(0,1), labels = scales::percent) +
   # Add proper labels
   labs(
     col = 'Education level',
@@ -404,4 +413,7 @@ ggplot(predictions_tb, aes(x = age)) +
     legend.position = c(0.1, 0.85),
     legend.key.height = unit(0.5,'cm')
   ) 
+
+
+
 

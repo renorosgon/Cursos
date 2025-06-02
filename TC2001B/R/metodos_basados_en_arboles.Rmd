@@ -1,0 +1,278 @@
+---
+title: "Superar la maldición de los métodos basados en árbles"
+author: "René Rosado González"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Librerias
+```{r}
+# Instalar - Cargar tidyverse
+if(require(tidyverse) == FALSE){                                                
+  install.packages('tidyverse')                                                 
+  library(tidyverse)                                                            
+}else{                                                                          
+  library(tidyverse)                                                            
+}
+
+#Instalar - Cargar tidymodels                                                       
+if(require(tidymodels) == FALSE){                                                
+  install.packages('tidymodels')                                                 
+  library(tidymodels)                                                            
+}else{                                                                          
+  library(tidymodels)                                                            
+}
+
+# Instalar - Cargar tidyquant                                                       
+if(require(tidyquant) == FALSE){                                                
+  install.packages('tidyquant')                                                 
+  library(tidyquant)                                                            
+}else{                                                                          
+  library(tidyquant)                                                            
+}
+
+# Instalar - Cargar quantmod                                                       
+if(require(quantmod) == FALSE){                                                
+  install.packages('quantmod')                                                 
+  library(quantmod)                                                            
+}else{                                                                          
+  library(quantmod)                                                            
+}
+
+# Instalar - Cargar ranger                                                       
+if(require(ranger) == FALSE){                                                
+  install.packages('ranger')                                                 
+  library(ranger)                                                            
+}else{                                                                          
+  library(ranger)                                                            
+}
+```
+
+# Data
+Extraer los datos
+```{r}
+getSymbols("NFLX",src="yahoo",from="2015-01-01",to = "2023-03-13")
+
+# Transformar
+netflix_stock = NFLX %>% 
+  # Serie de tiempo
+  fortify.zoo() %>% 
+  # Convertir a tibble
+  as_tibble() %>% 
+  # Limpiar nombres
+  janitor::clean_names() %>%
+  # Construir el rezago diario
+  mutate(
+    # Construir el rezago diario
+    nflx_daily_return = (nflx_adjusted - lag(nflx_adjusted)) / lag(nflx_adjusted)
+    # Alternativamente
+    # nflx_daily_return = log(nflx_adjusted / lag(nflx_adjusted)) 
+  ) %>%
+  # Quitar NAs
+  filter(!is.na(nflx_daily_return))
+```
+
+# Gráfica de precios
+```{r}
+ggplot(netflix_stock, aes(x = index, y = nflx_adjusted)) +
+  geom_line() +
+  labs(title = "NFLX Line Chart", subtitle = "Daily Price") + 
+  theme_tq() +
+  theme(
+    axis.title = element_blank()
+  )
+```
+
+# Gráfica de rendimientos
+```{r}
+ggplot(netflix_stock, aes(x = index, y = nflx_daily_return)) +
+  geom_line() +
+  labs(title = "NFLX Line Chart", subtitle = "Daily Returns") + 
+  theme_tq() +
+  theme(
+    axis.title = element_blank()
+  )
+```
+
+# Ingeniería de características
+```{r}
+# Nombres de las columnas
+nombres = names(netflix_stock)[-1] 
+
+# Crear una receta
+nflx_dr = recipe(
+  # Aquí cambiamos nuestra variable objetivo
+  formula = nflx_daily_return ~ .,
+  data = netflix_stock
+) %>%   
+  # Crear nuevas variables
+  step_window(
+    starts_with('nflx_'),
+    size = 15, statistic = 'mean',
+    role = 'predictor', names = paste0('ma_mediana_15_', nombres)
+  ) %>% 
+  step_window(
+    starts_with('nflx_'),
+    size = 15, statistic = 'var',
+    role = 'predictor', names = paste0('ma_var_15_', nombres)
+  ) %>% 
+  step_lag(starts_with('nflx_'), lag = 1:7) %>% 
+  # Eliminar variables que no tendremos en ese momento
+  step_mutate(
+    nflx_high = NULL,
+    nflx_low = NULL,
+    nflx_volume = NULL, 
+    nflx_close = NULL,
+    nflx_adjusted = NULL
+  ) %>% 
+  # Cocinar la receta
+  prep() %>% 
+  bake(new_data = NULL) %>% 
+  # Eliminar NA
+  filter(!is.na(lag_7_nflx_adjusted))
+```
+
+# Entrenamiento del modelo
+```{r}
+# Separar en conjunto de entrenamiento y prueba
+datos_split = nflx_dr %>% 
+  initial_time_split(
+    prop = 0.80
+  )
+entrenamiento = training(datos_split) 
+prueba = testing(datos_split)
+
+# Crear pliegues de validación inter temporal
+rolling_origin = rolling_origin(
+  entrenamiento,
+  initial = 1000, 
+  assess = 60,
+  cumulative = FALSE, 
+  skip = 60,
+  lag = 30)
+
+# Definir el algoritmo
+bosque = rand_forest() %>% 
+  # Fijar motor y declarar que queremos paralelizar
+  set_engine("ranger",  num.threads = parallel::detectCores() - 1) %>% 
+  set_mode("regression") %>% 
+  set_args(
+    mtry = tune(),
+    trees= tune(),
+    min_n = tune()
+  )
+
+# Definir una receta
+receta = recipe(
+  formula = nflx_daily_return ~ .,
+  data = entrenamiento
+)
+
+# Definir un flujo de trabajo
+flujo_bosque = workflow() %>% 
+  add_recipe(receta) %>% 
+  add_model(bosque)
+
+# Extraer hyperparametros
+bosque_parametros = flujo_bosque %>% 
+  extract_parameter_set_dials() 
+
+# Iniciar cluster en paralelo
+doParallel::registerDoParallel(cl = parallel::detectCores() - 1)
+
+# Malla de calibración
+bosque_tuning = tune_grid(
+  # Flujo de trabajo
+  object = flujo_bosque,
+  # Pliegues de validación
+  resamples = rolling_origin,
+  # Hyperparámetros
+  param_info = bosque_parametros,
+  # Función de pérdida
+  metrics = metric_set(yardstick::rmse),
+  # Control de la malla
+  control = control_grid(parallel_over = "everything"),
+  # Combinaciones a probar
+  grid = 100
+)
+
+# Detener el cluster
+doParallel::stopImplicitCluster()
+
+# Seleccionar el mejor modelo
+best_bosque = bosque_tuning %>%
+  select_best(metric = "rmse")
+
+print(best_bosque)
+```
+
+```{r}
+# Finalizar el flujo de trabajo
+final_bosque = flujo_bosque %>% 
+  finalize_workflow(best_bosque)
+
+# Ajuste final
+resultados_bosque = final_bosque %>% 
+  last_fit(
+    split = datos_split,
+    metrics = metric_set(yardstick::rmse)
+  )
+
+# Métricas de prueba
+metricas_bosque = resultados_bosque %>% 
+  collect_metrics() 
+
+print(metricas_bosque)
+```
+
+# Predicciones
+```{r}
+# Extraer el modelo
+bosque_trained = resultados_bosque %>% 
+  extract_fit_parsnip() 
+
+# Hacer predicciones
+
+predictions_tb =  augment(bosque_trained, prueba)
+```
+
+Gráfica de rendimientos 
+
+
+```{r}
+ggplot(predictions_tb, aes(x = index)) +
+  geom_line(aes(y = nflx_daily_return, col = 'Observed'), lwd = 2) +
+  geom_line(aes(y = .pred, col = 'Predicted'), lwd = 1) +
+  labs(title = "NFLX Line Chart", subtitle = "daily returns", col = '') + 
+  theme_tq() +
+  scale_color_manual(values = c('darkred','green'))+
+  theme(
+    axis.title = element_blank()
+  )
+```
+
+
+Estimación de precios
+
+
+```{r}
+predictions_tb = predictions_tb %>%
+  # Calcular precio
+  mutate(
+    nflx_precio_estimado = lag_1_nflx_adjusted * (1 + .pred)
+  )
+
+ggplot(predictions_tb, aes(x = index)) +
+  geom_line(aes(y = lag_1_nflx_adjusted, color = "Observado"), linewidth = 1) +
+  geom_line(aes(y = nflx_precio_estimado, color = "Estimado"), linewidth = 1, linetype = "dashed") +
+  labs(
+    title = "Precio de NFLX: Observado vs. Estimado",
+    subtitle = "Basado en rendimientos diarios predichos por Random Forest",
+    x = "Fecha",
+    y = "Precio Ajustado",
+    color = ""
+  ) +
+  scale_color_manual(values = c("Observado" = "darkred", "Estimado" = "green")) +
+  theme_tq() +
+  theme(legend.position = "top")
+```

@@ -122,7 +122,7 @@ rolling_origin = rolling_origin(
   train,
   initial = 5000, # Size of learning sample
   assess = 2000, # Size of assessing sample
-  cumulative = FALSE, # Avoif cumulative learning chunk
+  cumulative = FALSE, # Avoid cumulative learning chunk
   skip = 2000 # Skipp 2000 obs for the next chunk
 )
 
@@ -184,7 +184,7 @@ map_df(1:nrow(rolling_origin),unfolding_rolling_origin) %>%
     legend.key = element_rect(fill = "transparent"),
     legend.position = c(0.1, 0.95),
     legend.key.height = unit(0.5,'cm'),
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 # Create a simple recipe
@@ -270,7 +270,7 @@ tree_metrics = tree_tuning %>%
 
 # Select best model
 best_tree = tree_tuning %>%
-  select_best("spec")
+  select_best(metric = "spec")
 
 print(best_tree)
 
@@ -463,7 +463,7 @@ randomforest_metrics = randomforest_tuning %>%
 
 # Select best
 best_randomforest = randomforest_tuning %>%
-  select_best("roc_auc")
+  select_best(metric = "roc_auc")
 
 print(best_randomforest)
 
@@ -477,6 +477,12 @@ results_randomforest = final_randomforest %>%
     split = data_split,
     metrics = metric_set(yardstick::roc_auc, yardstick::accuracy, yardstick::sens, yardstick::spec)
   )
+
+# Collect predictions
+pred_randomforest = results_randomforest %>% 
+  collect_predictions() 
+
+pred_randomforest
 
 # Collect metrics
 metrics_randomforest = results_randomforest %>% 
@@ -513,7 +519,12 @@ corr_prediction %>%
     correlation = value
   ) %>% 
   filter(!str_detect(variable,'Fraud')) %>% 
-  ggplot(aes(x = correlation, y = variable, fill = correlation > 0)) +
+  ggplot(
+    aes(
+      x = correlation, 
+      y = reorder(variable, abs(correlation)), 
+      fill = correlation > 0)
+    ) +
   geom_col(show.legend = FALSE) +
   facet_wrap(~class) +
   labs(title = 'Variable correlation with probabilities') + 

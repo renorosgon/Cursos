@@ -6,6 +6,7 @@ if(require(tidyverse) == FALSE){
 }else{                                                                          
   library(tidyverse)                                                            
 }
+
 # Install - load ggside                                                       
 if(require(ggside) == FALSE){                                                
   install.packages('ggside')                                                 
@@ -23,9 +24,14 @@ data("CigarettesSW", package = "AER")
 
 # Description
 ?AER::CigarettesSW 
-# EDA
+
+# Look at the data
+glimpse(CigarettesSW)
+summary(CigarettesSW)
+
+# Pairs plot
 CigarettesSW %>% 
-  select_if(is.numeric) %>% 
+  select(-state) %>% 
   GGally::ggpairs()
 
 # Data wrangling
@@ -44,7 +50,7 @@ cigarettes = CigarettesSW %>%
 
 # Retult
 cigarettes %>% 
-  select_if(is.numeric) %>% 
+  select(-state) %>% 
   GGally::ggpairs()
 
 
@@ -56,243 +62,148 @@ simple_reg = cigarettes %>%
 # EDA
 summary(simple_reg)
 
-# Histogram
+# Packs distribution 
 ggplot(simple_reg, aes(x = packs)) +
   geom_histogram() +
+  # Add vertical line
   geom_vline(
-    aes(xintercept = mean(packs)), 
-    col = 'red', linetype = 'dashed'
-    ) 
+    # We can perform operations from data
+    mapping = aes(xintercept = mean(packs)), 
+    # Add non-data related aesthetics
+    col = 'darkblue', linetype = 'dashed', linewidth = 2
+    ) +
+  # Change theme
+  theme_bw()
 
+# Real price distribution
 ggplot(simple_reg, aes(x = real_price)) +
   geom_histogram() +
   geom_vline(
-    aes(xintercept = mean(real_price)), 
-    col = 'red',
-    linetype = 'dashed'
-  )
+    # We can perform operations from data
+    mapping = aes(xintercept = mean(real_price)), 
+    # Add non-data related aesthetics
+    col = 'darkblue', linetype = 'dashed', linewidth = 2
+  ) +
+  # Change theme
+  theme_bw()
 
 
 # Regression model visualy
-g = ggplot(simple_reg, aes(x = packs, y = real_price)) +
+g = ggplot(
+  data = simple_reg, 
+  mapping = aes(x = real_price, y = packs)) +
+  # Add scatter plot
   geom_point() +
+  # Add x-histrogram
   geom_xsidehistogram() +
+  # Add y-histogram
   geom_ysidehistogram() +
+  # Add regression line
   stat_smooth(method = 'lm', se = FALSE) +
-  labs(x = 'Consumed Pack', 'Average Price')
-
-print(g)
-
-# Elasticidades
-g = ggplot(simple_reg, aes(x = log(packs), y = log(real_price))) +
-  geom_point() +
-  geom_xsidehistogram() +
-  geom_ysidehistogram() +
-  stat_smooth(method = 'lm', se = FALSE) +
-  labs(x = 'Consumed Pack (log)', 'Average Price (log)')
+  # Mofify labels
+  labs(y = 'Consumed Packs', x = 'Average Price') +
+  theme_bw()
 
 print(g)
 
 # Some intuition behind
-x = pull(simple_reg, real_price) %>%  log()
-y = pull(simple_reg, packs) %>%  log()
+x = pull(simple_reg, real_price)
+y = pull(simple_reg, packs)
 
-# Calcula el promedio de x
+# Manual average
 sum(x) / (length(x))
 
-# Utiliza el comando mean(x)
+# mean(x)
 mean(x)
 
-# Calcula la varianza de x 
+# Manual variance
 sum((x - mean(x))^2) / (length(x) -1)
 
-# Utiliza el comando var(x)
+# var(x)
 var(x)
 
-# Calcula la desviacion estandar de x 
+# Manual standard deviation
 sqrt(var(x))
 
-# Utiliza el comando sd(x)
+# sd(x)
 sd(x)
 
-# Calcula la covarianza entre x y y
+# Manual covariance
 sum((x - mean(x)) * (y - mean(y))) / (length(x) -1)
 
-# Utiliza el comando cov(x,y)
+# cov(x,y)
 cov(x,y)
 
-# La estimacion de la pendiente
+# Slope estimation
 b_hat = cov(x,y)/var(x)
 print(b_hat)
 
-# Calcula el ratio de las desviaciones estandar de y y x
+# Standard deviation ratios
 ratio = sd(y)/sd(x)
 
-# Multiplica el ratio creado por la correlacion entre x y y
+# Weighted correlation
 print(cor(x,y) * ratio)
 
-# Calcula la media de y, posteriormente restale el producto de beta_hat por x.
-# Asignalo a un objeto llamado a_hat
+# Intercept estimation
 a_hat = mean(y) - b_hat * mean(x)
 print(a_hat)
-exp(a_hat)
 
 # Adding the prediction
 simple_reg = simple_reg %>% 
   mutate(
-    # Prediccion
-    .pred = a_hat + b_hat * log(real_price),
+    # Prediction
+    .pred = a_hat + b_hat * real_price,
     # Residuals
-    resid = log(packs) - .pred
+    resid = packs - .pred
   ) 
 
 # Residual histogram
 ggplot(simple_reg, aes(x = resid)) +
   geom_histogram() +
-  geom_vline(aes(xintercept = mean(resid)), col = 'red', linetype = 'dashed')
+  geom_vline(
+    # We can perform operations from data
+    mapping = aes(xintercept = mean(resid)), 
+    # Add non-data related aesthetics
+    col = 'darkblue', linetype = 'dashed', linewidth = 2
+  ) +
+  # Change theme
+  theme_bw()
 
 # Godness of the fit
 simple_reg %>% 
-  ggplot(aes(x = log(packs), y = .pred)) + 
+  # Compare observed vs predicted values
+  ggplot(aes(x = packs, y = .pred)) + 
   geom_point() +
+  # Add 45 degree line
   geom_abline(slope = 1, col = 'red') +
-  scale_x_continuous(limits = c(4,6)) +
-  scale_y_continuous(limits = c(4,6)) 
+  # Modify axis
+  scale_x_continuous(limits = c(50,200)) +
+  scale_y_continuous(limits = c(50,200)) 
 
-simple_reg %>% 
-  ggplot(aes(x = sort(log(packs)), y = sort(.pred))) + 
-  geom_point() +
-  geom_abline(slope = 1, col = 'red') +
-  scale_x_continuous(limits = c(3.5,6)) +
-  scale_y_continuous(limits = c(3.5,6)) 
-
-# Satisticaly
+# Satistical fitnes
 simple_reg %>% 
   summarise(
-    varianza_total = sum((log(packs)-mean(y))^2),
-    devianza = sum((log(packs)-.pred)^2),
-    r_cuadrada = 1 - (devianza/varianza_total),
-    rmse = sqrt(mean((log(packs)-.pred)^2))
+    total_variance = sum((packs - mean(y))^2),
+    deviance = sum((packs-.pred)^2),
+    r_squared = 1 - (deviance/total_variance),
+    rmse = sqrt(mean((packs-.pred)^2))
   )
 
 
-# The machine learning framework ------------------------------------------
-# Install - load tidymodels                                                       
-if(require(tidymodels) == FALSE){                                                
-  install.packages('tidymodels')                                                 
-  library(tidymodels)                                                            
-}else{                                                                          
-  library(tidymodels)                                                            
-}
-# Data splitting for samples
-set.seed(123)
-smoke_split = initial_split(
-  # Data to split
-  data = cigarettes,
-  # Proportions
-  prop = 0.80,
-  # Variable of interest
-  strata = packs
-)
-
-# Get training and testing samples
-smoke_training = training(smoke_split)
-smoke_testing = testing(smoke_split)
-
-# Create cross-validation folds
-set.seed(123)
-smoke_folds = vfold_cv(smoke_training, v = 3)
-
-# Create a recipe
-basic_recipe = recipe(
-  # Set a formula
+# R base framework --------------------------------------------------------
+model = lm(
   formula = packs ~ real_price,
-  # Set input data
-  data = smoke_testing
-) %>% 
-  step_log(all_numeric())
-
-set.seed(123)
-linear_regression = linear_reg() %>% 
-  set_engine('lm') %>% 
-  set_mode('regression')
-
-# Create a workflow
-lr_workflow = workflow() %>% 
-  # Add your recipe
-  add_recipe(basic_recipe) %>% 
-  # Add your model
-  add_model(linear_regression)
-
-# Get parameters to tune
-lr_parameters = lr_workflow %>% 
-  extract_parameter_set_dials() 
-
-# Create a tune grid
-lr_tuning = tune_grid(
-  object = lr_workflow,
-  resamples = smoke_folds,
-#  param_info = lr_parameters,
-  metrics = metric_set(yardstick::rmse),
-  control = control_grid(verbose = TRUE),
-  grid = 1
+  data = simple_reg
 )
 
-# Collect metrics
-tunning_metrics = lr_tuning %>%
-  collect_metrics() %>% 
-  # Arrange results from higher to lower
-  arrange(desc(mean))
+# Result
+print(model)
 
-# Select the best model
-best_lr = lr_tuning %>%
-  select_best("rmse")
-
-print(best_lr)
-
-# Finalize the workflow
-final_lr = lr_workflow %>% 
-  finalize_workflow(best_lr)
-
-# Make a final fit
-results_lr = final_lr %>% 
-  last_fit(
-    split = smoke_split,
-    metrics = metric_set(yardstick::rmse)
-  )
-
-# Asses testing metrics
-metrics_lr = results_lr %>% 
-  collect_metrics()
-
-print(metrics_lr)
-
-
-# Working with the trained model ------------------------------------------
-# Extract the trained model
-lr_trained = results_lr %>% 
-  extract_fit_parsnip() 
-
-print(lr_trained)
+# Coefficients
+coefficients(model)
 
 # Summary
-lr_trained %>% 
-  pluck('fit') %>% 
-  summary() 
-
-# Tidy coefficients
-tidy(lr_trained)
-
-# Preproc
-preproc = basic_recipe %>% prep() %>% bake(new_data = cigarettes)
-# Make predictions
-predictions_tb =  augment(lr_trained, preproc)
-
-predictions_tb %>% 
-  ggplot(aes(x = packs, y = .pred)) +
-  geom_point() +
-  geom_abline(slope = 1, col = 'red') +
-  coord_obs_pred()  
+summary(model)
 
 # Install - load performance                                                       
 if(require(performance) == FALSE){                                                
@@ -301,4 +212,94 @@ if(require(performance) == FALSE){
 }else{                                                                          
   library(performance)                                                            
 }
-check_model(lr_trained)
+check_model(model)
+
+# Structural equation -----------------------------------------------------
+ggplot(
+  data = simple_reg, 
+  mapping = aes(x = real_price, y = packs)) +
+  # Add scatter plot
+  geom_point() +
+  # Add x-histrogram
+  geom_xsidehistogram() +
+  # Add y-histogram
+  geom_ysidehistogram() +
+  # Add regression line
+  stat_smooth(method = 'lm', se = FALSE, formula = y ~ poly(x,2)) +
+  # Mofify labels
+  labs(y = 'Consumed Packs', x = 'Average Price') +
+  theme_bw()
+
+# Model definition
+model_2 = lm(
+  formula = packs ~ poly(real_price, 2),
+  data = simple_reg
+)
+
+# Summary
+summary(model_2)
+
+# Performance
+check_model(model_2)
+
+# Linear - log model ------------------------------------------------------
+ggplot(
+  data = simple_reg, 
+  mapping = aes(x = log(real_price), y = packs)) +
+  # Add scatter plot
+  geom_point() +
+  # Add x-histrogram
+  geom_xsidehistogram() +
+  # Add y-histogram
+  geom_ysidehistogram() +
+  # Add regression line
+  stat_smooth(method = 'lm', se = FALSE) +
+  # Mofify labels
+  labs(y = 'Consumed Packs', x = 'Average Price') +
+  theme_bw()
+
+# Model definition
+model_3 = lm(
+  formula = packs ~ log(real_price),
+  data = simple_reg
+)
+
+# Summary
+summary(model_3)
+
+# Performance
+check_model(model_3)
+
+# Log-Log model (elasticities) --------------------------------------------
+ggplot(
+  data = simple_reg, 
+  mapping = aes(x = log(real_price), y = log(packs))) +
+  # Add scatter plot
+  geom_point() +
+  # Add x-histrogram
+  geom_xsidehistogram() +
+  # Add y-histogram
+  geom_ysidehistogram() +
+  # Add regression line
+  stat_smooth(method = 'lm', se = FALSE) +
+  # Mofify labels
+  labs(y = 'Consumed Packs', x = 'Average Price') +
+  theme_bw()
+
+# Model definition
+model_4 = lm(
+  formula = log(packs) ~ log(real_price),
+  data = simple_reg
+)
+
+# How do you interpret this?
+coefficients(model_4)[1] %>% 
+  exp()
+
+# Summary
+summary(model_4)
+
+# Performance
+check_model(model_4)
+
+

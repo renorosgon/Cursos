@@ -59,7 +59,7 @@ logist <- function(x){
 nes %>% 
   mutate(y = as.numeric(obama_vote) - 1) %>% 
  # mutate(y = as.numeric(Vote) - 1) %>% 
-  ggplot(aes(x = ft_dem, y = y, col = income5)) +
+  ggplot(aes(x = ft_rep, y = y, col = income5)) +
   geom_point() + 
   stat_smooth(method="glm", se=FALSE, method.args = list(family=binomial)) +
   labs(
@@ -73,12 +73,13 @@ nes %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Helvetica'),
     # Cambia los títulos
     axis.title.y = element_blank(),
   )
   
 # Separa en conjunto de prueba y entrenamiento
+set.seed(123)
 data_split = nes %>% 
   initial_split(
     strata = obama_vote
@@ -139,6 +140,7 @@ matriz_entrenamiento = ajuste_ml_final %>%
   # Crea un mapa de calor
   autoplot(type = 'heatmap') 
 
+print(matriz_entrenamiento)
 
 # Ajusta el modelo final
 ajuste_ml_final = modelo_logistico %>% 
@@ -184,7 +186,7 @@ ridge_plot = ridge_fit %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Helvetica'),
     # Posición de la leyenda
     legend.position = 'bottom',
     # Quita el título de la leyenda
@@ -213,7 +215,7 @@ lasso_plot = lasso_fit %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Helvetica'),
     # Posición de la leyenda
     legend.position = 'bottom',
     # Quita el título de la leyenda
@@ -284,7 +286,7 @@ metricas_glmnet %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Helvetica'),
     # Cambia los títulos
     axis.title.y = element_blank(),
     # Posición de la leyenda
@@ -292,17 +294,17 @@ metricas_glmnet %>%
   )
 
 # Revisamos el mejor modelo según cada métrica
-ajuste_glmnet %>% select_best('kap')
-ajuste_glmnet %>% select_best('accuracy')
-ajuste_glmnet %>% select_best('sens')
-ajuste_glmnet %>% select_best('spec')
-ajuste_glmnet %>% select_best('roc_auc')
+ajuste_glmnet %>% select_best(metric = 'kap')
+ajuste_glmnet %>% select_best(metric = 'accuracy')
+ajuste_glmnet %>% select_best(metric = 'sens')
+ajuste_glmnet %>% select_best(metric = 'spec')
+ajuste_glmnet %>% select_best(metric = 'roc_auc')
 
 # Mejor modelo segun la exactitud  
 modelo_logistico_glmnet %>% 
   # Finaliza el flujo usando el mejor modelo
   finalize_workflow(ajuste_glmnet %>% 
-                      select_best('accuracy')) %>% 
+                      select_best(metric = 'accuracy')) %>% 
   # Realiza el último ajuste
   last_fit(data_split) %>%  
   # Extrae las predicciones
@@ -314,7 +316,7 @@ modelo_logistico_glmnet %>%
 modelo_logistico_glmnet %>% 
   # Finaliza el flujo usando el mejor modelo
   finalize_workflow(ajuste_glmnet %>% 
-                      select_best('roc_auc')) %>% 
+                      select_best(metric = 'roc_auc')) %>% 
   # Realiza el último ajuste
   last_fit(data_split) %>%  
   # Extrae las predicciones
@@ -324,7 +326,7 @@ modelo_logistico_glmnet %>%
 
 # Mejor modelo glmnet
 mejor_glmnet = ajuste_glmnet %>% 
-  select_best('roc_auc')
+  select_best(metric = 'roc_auc')
 
 # Selecciona el mejor modelo
 ajuste_glmnet_final =  modelo_logistico_glmnet %>% 
@@ -350,6 +352,8 @@ ajuste_glmnet_final %>%
   ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
   # Agrega columnas
   geom_col() +
+  # Agrega columnas
+  geom_text(aes(label = round(Importance, 2))) +
   # Modifica el eje x
   scale_x_continuous(
     # Ajusta los márgenes
@@ -365,7 +369,7 @@ ajuste_glmnet_final %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Helvetica'),
     # Cambia los títulos
     axis.title.y = element_blank(),
     # Posición de la leyenda
@@ -397,4 +401,43 @@ metricas_glmnet = ajuste_glmnet_final %>%
 # Resultados     
 print(metricas_glmnet)
 print(metricas_logistico)
+
+# Cómo se interpreta? -----------------------------------------------------
+
+resultados = ajuste_ml_final %>% 
+  extract_fit_parsnip() 
+
+summary(resultados$fit)
+
+preprocesamiento = receta %>% 
+  prep() %>% 
+  bake(new_data = nes)
+
+predicciones = resultados %>% 
+  augment(preprocesamiento)
+
+coefficientes = tidy(resultados$fit)
+
+funcion = function(coefficientes, variables){
+  coefficientes %>% 
+    filter(term %in% variables) %>% 
+    summarise(
+      x_veces = exp(sum(estimate))
+    )
+}
+
+funcion(
+  coefficientes = coefficientes,
+  variables = c('ft_dem','black_Yes')
+  )
+
+ggplot(predicciones, 
+       aes(
+         x = ft_dem, 
+         y = .pred_yes
+         )
+       ) +
+  geom_density_2d()
+
+
 

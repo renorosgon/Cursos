@@ -1,0 +1,321 @@
+---
+title: "K Nearest Neighbors Classifier"
+author: "MDS. René Rosado González"
+output: 
+  html_document:
+    theme: paper
+    highlight: haddock
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Consumo de agua en la CDMX
+
+Para este análisis intentaremos predecir el índice de desarrollo por colonia en función del consumo de agua y su ubicación geográfica.
+
+## Librerías
+
+```{r libraries, warning = FALSE, message = FALSE}
+# Instala - carga tidyverse                                                       
+if(require(tidyverse) == FALSE){                                                
+  install.packages('tidyverse')                                                 
+  library(tidyverse)                                                            
+}else{                                                                          
+  library(tidyverse)                                                            
+}
+# Instala - carga tidymodels                                                       
+if(require(tidymodels) == FALSE){                                                
+  install.packages('tidymodels')                                                 
+  library(tidymodels)                                                            
+}else{                                                                          
+  library(tidymodels)                                                            
+}
+# Instala - kknn                                        
+if(require(kknn) == FALSE){                                                
+  install.packages('kknn')                                                 
+}
+```
+
+## Solución paso a paso
+1. Carga el conjunto de datos en un objeto llamado `consumo_agua` (0.5 pts)
+
+
+```{r paso1, warning = FALSE, message = FALSE}
+# Este conjutno de datos está disponible en el portal de Datos Abierto de la CDMX
+# 1. Leer datos
+consumo_agua = read_csv("https://datos.cdmx.gob.mx/dataset/eb38823c-488a-49e8-a2cf-62e628fa246f/resource/2263bf74-c0ed-4e7c-bb9c-73f0624ac1a9/download/consumo_agua_historico_2019.csv")
+```
+
+
+2. Filtra el conjunto de datos de tal forma que solo conserves el primer bimestre  (0.5 pts)
+3. Filtra las observaciones de tal forma que no tengas NAs en las columnas `alcaldia` y `colonia` (0.5 pts)
+4. Transforma la variable `indice_des` a un factor con el siguiente orden `POPULAR`, `BAJO`, `MEDIO`, `ALTO` (0.5 pts)
+
+
+```{r paso23y4, warning = FALSE, message = FALSE}
+primer_bimestre = consumo_agua %>% 
+  filter(
+    # 2. Filtrar primer bimestre
+    bimestre == 1,
+    # 3. Filtrar NAs
+    !is.na(alcaldia), 
+    !is.na(colonia)
+    ) %>% 
+  mutate(
+    # Transformar indice_des a factor
+    indice_des = factor(indice_des, levels = c('POPULAR','BAJO','MEDIO','ALTO'))
+  )
+```
+
+
+
+5. Utilizando `ggplot` genera un gráfico de cajas que compare `indice_des` y `consumo_total` para cada `alcaldia` (TIP: si el gráfico no resulta lo suficientemente informativo, intenta transformar `consumo_total` usando logaritmos y/o raíces) (1 pts)
+
+
+```{r paso5, warning = FALSE, message = FALSE, out.width="100%"}
+# Crear un lienzo y fijar las variables por eje
+ggplot(primer_bimestre, aes(x = consumo_total, y = indice_des)) +
+  # Agregar un boxplot
+  geom_boxplot() +
+  # Modificar el eje x
+  scale_x_continuous(
+    limits = c(1,NA),
+    trans='log10',
+    breaks = c(1,10,100,1000,10000,100000),
+    labels = c('1','10','100','1000','10 mil','100 mil')
+    ) +
+  # Separar por alcaldía en 4 columnas
+  facet_wrap(~alcaldia, ncol = 4) +
+  # Agregar etiquetas
+  labs(
+    title = 'Consumo total de agua por Alcaldía',
+    subtitle = 'Índice de desarrollo humano',
+    caption = 'Elaboración propia con datos de CDMX',
+    x = 'Litros de água (log)' 
+  ) +
+  # Modificar tema
+  theme_bw(base_size = 16, base_family = 'Avenir Next') +
+  theme(
+    # Quitar título del eje y
+    axis.title.y = element_blank()
+  )
+```
+
+
+6. Entrena un modelo de regresión de k-vecinos cercanos para predecir `consumo_total` en función de `longitud`, `latitud` e `indice_des` (OJO: no olvides separar tus datos en prueba y entrenamiento) (3 pts)
+
+
+```{r paso6, warning = FALSE, message = FALSE}
+modelo_knn = nearest_neighbor() %>% 
+  # Fijar motor
+  set_engine("kknn") %>% 
+  # Fijar modo clasificación
+  set_mode('classification') %>% 
+  # Fijar hyperparámetros
+  set_args(
+    neighbors = tune(),
+    dist_power = tune(),
+    weight_func = tune()
+    )
+
+# Separar en prueba y entrenaiento
+set.seed(123)
+split = initial_split(
+  # Conjunto de datos
+  data = primer_bimestre,
+  # Proporciones
+  prop = 0.80,
+  # Variable of interest
+  strata = indice_des
+)
+
+# Obtener conjunto de prueba y entrenamiento
+train = training(split)
+test = testing(split)
+
+# Pliegues de validación cruzada
+set.seed(123)
+folds = vfold_cv(train, v = 3)
+
+# Crear una receta
+recipe = recipe(
+  # Formula
+  formula = indice_des ~ latitud + longitud + consumo_total, 
+  # Datos de entrenamiento
+  data = train
+) 
+
+# Fjulo de trabajo
+knn_workflow = workflow() %>% 
+  # Agregar la receta
+  add_recipe(recipe) %>% 
+  # Agregar el modelo
+  add_model(modelo_knn)
+
+# Extraer parámetros
+knn_parameters = knn_workflow %>% 
+  extract_parameter_set_dials() 
+
+# Paralelizar nuestro trabajo
+cluster = parallel::makeCluster(parallel::detectCores())
+doParallel::registerDoParallel(cluster)
+
+# Crear una malla de calibración
+set.seed(123)
+knn_tuning = tune_grid(
+  # Trabajamos con nuestro flujo de trabajo
+  object = knn_workflow,
+  # Agregamos nuestros pliegues
+  resamples = folds,
+  # Agregamos nuestros parámetros
+  param_info = knn_parameters,
+  # Fijamos nuestras métricas
+  metrics = metric_set(yardstick::accuracy),
+  # Control de acciones
+  control = control_grid(parallel_over = "everything" ),
+  # Tamaño de la búsqueda
+  grid = 100
+  )
+
+# Cerrar el cluster
+parallel::stopCluster(cluster)
+
+# Recolectar metricas de calibración
+tuning_metrics = knn_tuning %>%
+  collect_metrics() %>% 
+  # Ordenar de menor a mayor
+  arrange(mean)
+
+# Seleccionar mejor modelo
+best_knn = knn_tuning %>%
+  select_best(metric = "accuracy")
+
+# Finalizar el flujo de trabajo
+final_knn = knn_workflow %>% 
+  finalize_workflow(best_knn)
+
+# Hacer el ajuste final
+results_knn = final_knn %>% 
+  last_fit(
+    split = split,
+    metrics = metric_set(yardstick::accuracy)
+    )
+
+# Extraer métricas de prueba
+metrics_knn = results_knn %>% 
+  collect_metrics()
+
+print(metrics_knn)
+```
+
+
+7. Compara los valores predichos con los valores observados del conjunto original en un gráfico. (1 pts)
+
+
+```{r paso7, warning = FALSE, message = FALSE}
+# Extraer el modelo entrenado
+knn_trained = results_knn %>% 
+  extract_fit_parsnip() 
+
+# Agregar predicciones
+predictions_tb = augment(knn_trained, primer_bimestre) 
+
+# Matriz de confusión
+predictions_tb %>% 
+  conf_mat(truth = indice_des, estimate = .pred_class) %>%  
+  autoplot(type = 'heatmap')
+
+```
+
+
+8. Genera los gráficos que consideres convenientes para explicar el efecto de `consumo_total` en las predicciones (2 pts)
+
+
+```{r paso8, warning = FALSE, message = FALSE}
+# Gráfico 
+predictions_tb %>% 
+  # Columnas de interés
+  select(.pred_POPULAR:.pred_ALTO, consumo_total) %>% 
+  # Cambiar formato
+  gather(prediccion, probabilidad, - consumo_total) %>%
+  # Calcular 100 bins
+  mutate(consumo_total = cut(log(consumo_total+1), breaks = 5)) %>% 
+  ggplot(aes(y = consumo_total, x = probabilidad, col = prediccion)) +
+  # Agregar puntos
+  geom_boxplot(show.legend = FALSE) +
+  # Separar por alcaldía en 4 columnas
+  facet_wrap(~prediccion, ncol = 4) +
+  # Agregar etiquetas
+  labs(
+    title = 'Predicción del Índice de desarrollo humano por colonia',
+    subtitle = 'en función de consumo total en litros de água (log)',
+    caption = 'Elaboración propia con datos de CDMX',
+    x = 'Probabilidad' 
+  ) +
+  # Modificar tema
+  theme_bw(base_size = 16, base_family = 'Avenir Next') +
+  theme(
+    # Quitar título del eje y
+    axis.title.y = element_blank()
+  )
+
+```
+
+
+9. Con el modelo entrenado, realiza predicciones para el segundo bimestre y compara los valores predichos con los valores observados del conjunto original en un gráfico.  (0.5 pts)
+
+
+```{r paso9, warning = FALSE, message = FALSE}
+# Agregar predicciones
+predictions_tb = consumo_agua %>% 
+  filter(
+    # 2. Filtrar primer bimestre
+    bimestre == 2,
+    # 3. Filtrar NAs
+    !is.na(alcaldia), 
+    !is.na(colonia)
+    ) %>% 
+  mutate(
+    # Transformar indice_des a factor
+    indice_des = factor(indice_des, levels = c('POPULAR','BAJO','MEDIO','ALTO'))
+    ) %>% 
+  augment(x = knn_trained) 
+
+# Matriz de confusión
+predictions_tb %>% 
+  conf_mat(truth = indice_des, estimate = .pred_class) %>%  
+  autoplot(type = 'heatmap')
+
+
+```
+
+
+
+10. Con el modelo entrenado, realiza predicciones para el tercer bimestre y compara los valores predichos con los valores observados del conjunto original en un gráfico.  (0.5 pts)
+
+
+```{r paso10, warning = FALSE, message = FALSE}
+# Agregar predicciones
+predictions_tb = consumo_agua %>% 
+  filter(
+    # 2. Filtrar primer bimestre
+    bimestre == 3,
+    # 3. Filtrar NAs
+    !is.na(alcaldia), 
+    !is.na(colonia)
+    ) %>% 
+  mutate(
+    # Transformar indice_des a factor
+    indice_des = factor(indice_des, levels = c('POPULAR','BAJO','MEDIO','ALTO'))
+    ) %>% 
+  augment(x = knn_trained) 
+
+# Matriz de confusión
+predictions_tb %>% 
+  conf_mat(truth = indice_des, estimate = .pred_class) %>%  
+  autoplot(type = 'heatmap')
+
+```
+

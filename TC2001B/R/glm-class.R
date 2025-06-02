@@ -214,6 +214,8 @@ poisson_fit = poisson_model %>%
   fit(num_viol ~ type + log(enrollment) + region, data = crime)  %>% 
   extract_fit_engine()
 
+performance::check_model(poisson_fit)
+
 # Extract results
 poisson_results = poisson_fit %>% 
   augment(crime, se_fit = T) %>%

@@ -1,0 +1,315 @@
+---
+title: "Naïve Bayes"
+author: "MDS. René Rosado González"
+output: 
+  html_document:
+    theme: paper
+    highlight: haddock
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Librerías
+
+```{r libraries, warning = FALSE, message = FALSE}
+# Install - load tidyverse                                                       
+if(require(tidyverse) == FALSE){                                                
+  install.packages('tidyverse')                                                 
+  library(tidyverse)                                                            
+}else{                                                                          
+  library(tidyverse)                                                            
+}
+# Install - load tidymodels                                                       
+if(require(tidymodels) == FALSE){                                                
+  install.packages('tidymodels')                                                 
+  library(tidymodels)                                                            
+}else{                                                                          
+  library(tidymodels)                                                            
+}
+# Install - load discrim                                                       
+if(require(discrim) == FALSE){                                                
+  install.packages('discrim')                                                 
+  library(discrim)                                                            
+}else{                                                                          
+  library(discrim)                                                            
+}
+```
+
+## Interrupción legal del embarazo
+
+Para este análisis intentaremos predecir la probabilidad de que una persona que toma la decisión de interrumpir su embarazo tenga una complicación al ser atendida. Los datos están disponibles en el [Portal de Datos Abierto de la Ciudad de México](https://datos.cdmx.gob.mx/dataset/interrupcion-legal-del-embarazo)
+
+```{r leer los datos, warning = FALSE, message = FALSE}
+ile = read_csv('https://datos.cdmx.gob.mx/dataset/3688e08c-029f-4b47-bb69-f2bc0ecf8bd1/resource/c89186ee-0159-4057-8022-f9d5dadcab53/download/ile_2023_c1.csv')
+```
+
+
+1. Realiza un análisis exploratorio de datos usando estadísticas resumen y gráficos que te permitan identificar variables relevantes. (2 pts)
+
+```{r paso1, warning = FALSE, message = FALSE}
+# Resumen de datos
+glimpse(ile)
+```
+
+Resumen de variables:
+
+```{r summary, warning = FALSE, message = FALSE}
+ile %>% 
+  mutate_if(is.character, factor) %>% 
+  summary()
+```
+
+Ingeniería de características
+```{r unique, warning = FALSE, message = FALSE}
+ile = ile %>% 
+  transmute(
+    complicacion = factor(se_complica, levels = c('No','Si')),
+    abortos_previos = ifelse(numero_abortos > 1,'Abortos previos', 'Sin abortos previos'),
+    abortos_previos = factor(abortos_previos, levels = c('Sin abortos previos','Abortos previos')),
+    edad, 
+    educacion = ifelse(nivel_edu %in% c('Licenciatura', 'Maestría'), 'Superior', nivel_edu),
+    educacion = factor(educacion, levels = c('Sin acceso a la educacion formal', 'Primaria', 'Secundaria','Preparatoria','Superior'))
+  )
+
+summary(ile)
+```
+
+Análisis gráfico:
+
+```{r ggplot, warning = FALSE, message = FALSE}
+# Crear un gráfico
+ggplot(ile, aes(x = edad, fill = complicacion)) +
+  # Historgrama
+  geom_histogram() + 
+  # Etiquetas
+  labs(
+    x = 'Edad',
+    title = 'Edad de la persona según complicaciones en el procedimiento',
+    fill = 'Complicaciones'
+  ) +
+  # Tema
+  theme_bw() +
+  theme(
+    axis.title.y = element_blank(),
+    # Modificar la pocisión de la leyenda
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.key = element_rect(fill = "transparent"),
+    legend.position = c(0.05, 0.9),
+    legend.key.height = unit(0.5,'cm')
+  ) 
+```
+
+```{r ggplot2, warning = FALSE, message = FALSE}
+# Crear un gráfico
+ggplot(ile, aes(x = edad, y = complicacion, fill = complicacion)) +
+  # Historgrama
+  geom_boxplot() + 
+  # Etiquetas
+  labs(
+    x = 'Edad',
+    title = 'Edad de la persona según complicaciones en el procedimiento',
+    fill = 'Complicaciones'
+  ) +
+  # Tema
+  theme_bw() +
+  theme(
+    axis.title.y = element_blank(),
+    # Modificar la pocisión de la leyenda
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.key = element_rect(fill = "transparent"),
+    legend.position = c(0.05, 0.9),
+    legend.key.height = unit(0.5,'cm')
+  ) 
+```
+
+```{r ggplot3, warning = FALSE, message = FALSE}
+ile %>% 
+  count(complicacion, educacion) %>% 
+  with_groups(
+    .groups = educacion,
+    mutate,
+    pct = n/sum(n)
+  ) %>% 
+  ggplot(
+    aes(x = pct, y = educacion, fill = complicacion)
+  ) +
+  geom_col() +
+  theme(
+    axis.title.y = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.key = element_rect(fill = "transparent"),
+    legend.position = c(0.05, 0.9),
+    legend.key.height = unit(0.5,'cm')
+  ) 
+```
+```{r ggplot4, warning = FALSE, message = FALSE}
+# Crear un gráfico
+ggplot(ile, aes(x = edad, fill = abortos_previos)) +
+  # Historgrama
+  geom_density() + 
+  facet_grid(complicacion ~ educacion, scales = 'free') +
+  # Etiquetas
+  labs(
+    x = 'Edad',
+    title = 'Edad de la persona según complicaciones en el procedimiento',
+    fill = ''
+  ) +
+  # Tema
+  theme_bw() +
+  theme(
+    axis.title.y = element_blank(),
+  ) 
+```
+
+2. Entrena un modelo Bayes Ingenuo seleccionando la métrica que consideres como el mejor criterio. Argumenta tu respuesta (5 pts)
+
+```{r model, warning = FALSE, message = FALSE}
+nb_model = naive_Bayes() %>% 
+  # Motor
+  set_engine("klaR")  %>% 
+  # Modo
+  set_mode("classification") %>% 
+  # Hyperparámetros
+  set_args(
+    Laplace = tune(),
+    smoothness = tune()
+    )
+
+# Separar prueba y entrenamiento
+set.seed(123)
+split = initial_split(
+  # Data to split
+  data = ile,
+  # Proportions
+  prop = 0.75,
+  # Variable of interest
+  strata = complicacion
+)
+
+# Get training and testing samples
+train = training(split)
+test = testing(split)
+
+# Pliegues de validación cruzada
+set.seed(123)
+folds = vfold_cv(train, v = 5)
+
+# Crear un areceta
+recipe = recipe(
+  # Formula
+  formula = complicacion ~ edad + educacion + abortos_previos, 
+  # Datos
+  data = train
+) %>% 
+  # Imputar valores
+  step_impute_knn(educacion)
+
+# Crear un flujo de trabajo
+nb_workflow = workflow() %>% 
+  # Agregar la receta
+  add_recipe(recipe) %>% 
+  # Agregar el modelo
+  add_model(nb_model)
+
+# Extraer hiperparametros
+nb_parameters = nb_workflow %>% 
+  extract_parameter_set_dials() 
+
+# Paralelizar nuestro trabajo
+cluster = parallel::makeCluster(parallel::detectCores())
+doParallel::registerDoParallel(cluster)
+
+# Crear la malla de calibración
+set.seed(123)
+nb_tuning = tune_grid(
+  object = nb_workflow,
+  resamples = folds,
+  param_info = nb_parameters,
+  metrics = metric_set(yardstick::spec),
+  control = control_grid(verbose = TRUE),
+  grid = 100
+  )
+
+# Cerrar el cluster
+parallel::stopCluster(cluster)
+
+# Extraer métricas
+tuning_metrics = nb_tuning %>%
+  collect_metrics() 
+
+# Seleccionar el mejor modelo
+best_nb = nb_tuning %>%
+  select_best("spec")
+
+# Finalizar el flujo de trabajo
+final_nb = nb_workflow %>% 
+  finalize_workflow(best_nb)
+
+# Hacer el último ajuste
+results_nb = final_nb %>% 
+  last_fit(
+    split = split,
+    metrics = metric_set(yardstick::spec)
+    )
+
+
+# Matriz de confusión en prueba
+results_nb %>% 
+  collect_predictions() %>% 
+  conf_mat(truth = complicacion, estimate = .pred_class) %>% 
+  print()
+
+# Métricas
+results_nb %>% 
+  collect_predictions() %>% 
+  conf_mat(truth = complicacion, estimate = .pred_class) %>% 
+  summary() %>% 
+  print()
+```
+
+3. Interpreta los resultados predichos por el modelo apoyándote en elementos estadísticos y gráficos (3 pts)
+
+```{r decision_boundary, warning = FALSE, message = FALSE}
+# Trabajar con un modelo entrenado
+nb_trained = results_nb %>% 
+  extract_fit_parsnip() 
+
+# Hacer predicciones
+predictions_tb =  augment(
+  x = nb_trained,
+  # Receta
+  recipe %>% prep %>% bake(new_data = ile)
+  )
+
+# Grafico de dispesion
+ggplot(predictions_tb, aes(x = edad)) +
+  # Probabilidad de presentar complicaciones
+  geom_point(aes(y = .pred_Si, col = abortos_previos)) + 
+  facet_wrap(~educacion, nrow = 1) +
+  # Etiquetas
+  labs(
+    x = 'Edad',
+    title = 'Las personas sin abortos previos suelen ser más propensas a presentar complicaciones',
+    subtitle = 'Probabilidad de presentar complicaciones',
+    # Add the following caption
+    caption = 'Own elaboration with data from Llaudet & Imai (2022)'
+  ) +
+  # Use a default theme
+  theme_bw() +
+  # Modify legend attributes using legend.attribute
+  theme(
+    axis.title.y = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_blank(),
+    legend.box.background = element_blank(),
+    legend.key = element_rect(fill = "transparent"),
+    legend.position = c(0.1, 0.9),
+    legend.key.height = unit(0.5,'cm')
+  ) 
+```

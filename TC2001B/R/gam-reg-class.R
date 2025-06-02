@@ -49,8 +49,28 @@ if(require(mgcv) == FALSE){
   library(mgcv)                                                            
 }
 
+# Alternativas
+archivo_1 = read_csv(
+  file = "data/servicios_integrales_LOCALTEL/servicios_integrales_2016-2018.csv",
+  col_types = cols(cp_usuaria = col_character(), cp_hechos = col_character())
+  )
+archivo_2 = read_csv(
+  file = "data/servicios_integrales_LOCALTEL/servicios_integrales_2019-2021.csv",
+  col_types = cols(cp_usuaria = col_character(), cp_hechos = col_character())
+  )
+archivo_3 = read_csv(
+  file = "data/servicios_integrales_LOCALTEL/servicios_integrales_2022-2023.csv",
+  col_types = cols(cp_usuaria = col_character(), cp_hechos = col_character())
+  )
+
+data = archivo_1 %>% 
+  
+  (archivo_2) %>% 
+  bind_rows(archivo_3)
+
 # Get files 
 files = list.files('data/servicios_integrales_LOCALTEL', full.names = TRUE)
+
 
 # Load data
 data = map_df(
@@ -96,7 +116,7 @@ ggplot(calls_past, aes(x = time, y = calls)) +
     # Remove axis title
     axis.title = element_blank(),
     # Modify font
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 # Histogram over time
@@ -116,7 +136,7 @@ ggplot(calls_past, aes(x = calls)) +
     # Remove axis title
     axis.title = element_blank(),
     # Modify font
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 # Heatmap
@@ -140,7 +160,7 @@ ggplot(calls_past, aes(x = day, y = hour, fill = sqrt(calls))) +
     axis.title.x = element_blank(),
     axis.text.x = element_text(angle = 90),
     # Modify font
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 # Explaining non-linear relationships
@@ -160,7 +180,7 @@ plot = ggplot(calls_past, aes(x = hour, y = calls)) +
     # Move legend
     legend.position = 'top',
     # Modify font
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   ) 
 
 print(plot)
@@ -234,7 +254,6 @@ set.seed(35)
 # Make a time split
 data_split = calls_past %>% 
   initial_time_split(
-    strata = calls,
     prop = 0.75
   )
 
@@ -251,9 +270,9 @@ summary(test)
 rolling_origin = rolling_origin(
   train,
   initial = 240 * 24, # First 240 days hourly
-  assess = 60 * 24, # Assess the next 30 days hourly
+  assess = 60 * 24, # Assess the next 60 days hourly
   cumulative = TRUE, # Do not make cumulative learning
-  skip = 60 * 24 # Skip 30 days hourly
+  skip = 60 * 24 # Skip 60 days hourly
 )
 
 # This function unnests and summarises the rolling origin folds
@@ -318,7 +337,7 @@ map_df(1:nrow(rolling_origin),unfolding_rolling_origin) %>%
     legend.key = element_rect(fill = "transparent"),
     legend.position = c(0.9, 0.95),
     legend.key.height = unit(0.5,'cm'),
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 # Create a recipe
@@ -368,7 +387,8 @@ recipe_dummies = polynomial_recipe %>%
 # Behind the scene
 recipe_dummies %>% 
   prep() %>% 
-  juice()
+  juice() %>% 
+  glimpse()
 
 # Explaining the differences
 poisson_fit_dummies = poisson_model %>% 
@@ -461,7 +481,7 @@ glmnet_metrics = glmnet_tuning %>%
 
 # Select best model
 best_glmnet = glmnet_tuning %>%
-  select_best("rmse")
+  select_best(metric = "rmse")
 
 print(best_glmnet)
 
@@ -515,7 +535,7 @@ coefficients %>%
   theme_bw() +
   theme(
     axis.title.y = element_blank(),
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 
@@ -565,7 +585,7 @@ predictions_glmnet %>%
   theme(
     axis.title.y = element_blank(),
     legend.position = 'top',
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 new_glmnet_metrics = predictions_glmnet %>% 
@@ -589,7 +609,22 @@ recipe = recipe(
   formula = calls ~ .,
   # Set data
   data = train
-) 
+) %>% 
+  # Day dummies
+  step_dummy(day, one_hot = TRUE) %>% 
+  # Month dummies
+  step_dummy(month, one_hot = TRUE) %>% 
+  # Avoid dummy traps
+  step_mutate(
+    day_1 = NULL,
+    month_01 = NULL
+  )
+
+# Check recipe
+recipe %>% 
+  prep() %>% 
+  juice() %>% 
+  glimpse()
 
 # Create a workflow
 gam_workflow = workflow() %>% 
@@ -599,7 +634,11 @@ gam_workflow = workflow() %>%
   add_model(
     gam_model,
     # Set formula
-    formula = calls ~ s(hour) + day + month + year
+    formula = calls ~ s(hour) + day_2 + day_3 + 
+      day_4 + day_5 + day_6 + day_7 +
+      month_02 + month_03 + month_04 + month_05 +
+      month_06 + month_07 + month_08 + month_09 + 
+      month_10 + month_11 + month_12 + year
     )
 
 # Get parameters to tune
@@ -634,7 +673,7 @@ gam_metrics = gam_tuning %>%
 
 # Select best model
 best_gam = gam_tuning %>%
-  select_best("rmse")
+  select_best(metric = "rmse")
 
 print(best_gam)
 
@@ -708,7 +747,7 @@ predictions_tb %>%
   theme(
     axis.title.y = element_blank(),
     legend.position = 'top',
-    text = element_text(family = 'Bebas Neue')
+    text = element_text(family = 'Arial')
   )
 
 new_gam_metrics = predictions_tb %>% 

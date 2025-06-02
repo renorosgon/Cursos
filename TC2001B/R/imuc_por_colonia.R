@@ -56,13 +56,11 @@ input_matrix = imuc_2020 %>%
 # Para permitir la comparación en el tiempo de los indicadores simples se 
 # determina el vector base de referencia al valor mínimo —el peor escenario 
 # teórico— de la fecha censal 2020.
-vector_minimo = makeReferenceVector(
-  X = input_matrix * -1, 
-  reference_vector_function = min) 
+vector_minimo =  rep(0, ncol(input_matrix))
 
 # Cálculo de índice
 index_2020 = p2distance(
-  matriz = input_matrix * -1,
+  matriz = - (100 - input_matrix),
   reference_vector = vector_minimo,
   iterations = 50
 )
@@ -126,35 +124,19 @@ factores_de_correccion = pluck(index_2020, 'correction_factors') %>%
   as_tibble(rownames = 'variable') %>% 
   rename(factor_de_correccion = value) 
 
-# Cálculo del rango del ínidce
-rango_indice = imuc_2020 %>% 
-  # Caluclar la inversa de la desviación estandar
-  summarise_at(.vars = vars("P6A14NAE":"OVSCEL"), .funs = inversa_sd) %>% 
-  t() %>% 
-  as_tibble(rownames = 'variable') %>% 
-  rename(inv_sd = V1) %>% 
-  # Concatenar factores de correción
-  left_join(factores_de_correccion, by = 'variable') %>% 
-  # Calcular el máximo
-  mutate(
-    maximo = abs(0 - as.vector(vector_minimo)) * inv_sd * factor_de_correccion
-  ) %>% 
-  # Resumen del rango
-  reframe(
-    minimo = 0,
-    maximo = sum(maximo)
-  )
 
-minimo = pull(rango_indice, minimo)
-maximo = pull(rango_indice, maximo)
 # Resultado ---------------------------------------------------------------
 imuc_2020 = imuc_2020 %>% 
   # Agregamos el índice
   mutate(
     IM_2020 = p2distance,
     GM_2020 = estratos,
-    IMN_2020 = (p2distance - minimo) / (maximo - minimo)
+    IMN_2020 = (p2distance - min(p2distance)) / (max(p2distance) - min(p2distance))
   ) 
 
 # Guardamos los datos
 # write_excel_csv(imuc_2020, 'data/imuc_2020')
+
+ggplot(imuc_2020, aes(x = IM_2020, y = GM_2020)) +
+  geom_point()
+

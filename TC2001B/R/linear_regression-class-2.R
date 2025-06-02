@@ -6,12 +6,19 @@ if(require(tidyverse) == FALSE){
 }else{                                                                          
   library(tidyverse)                                                            
 }
-# Install - load ggside                                                       
-if(require(ggside) == FALSE){                                                
-  install.packages('ggside')                                                 
-  library(ggside)                                                            
+# Install - load patchwork                                                       
+if(require(patchwork) == FALSE){                                                
+  install.packages('patchwork')                                                 
+  library(patchwork)                                                            
 }else{                                                                          
-  library(ggside)                                                            
+  library(patchwork)                                                            
+}
+# Install - load performance                                                       
+if(require(performance) == FALSE){                                                
+  install.packages('performance')                                                 
+  library(performance)                                                            
+}else{                                                                          
+  library(performance)                                                            
 }
 # Install - AER                                        
 if(require(AER) == FALSE){                                                
@@ -32,24 +39,80 @@ CigarettesSW %>%
 cigarettes = CigarettesSW %>% 
   # Transmute date
   transmute(
-    # Create an ID
-    id = paste0(state, year), 
     # Keep year and packs
-    year, packs,
+    year = factor(year), 
+    packs,
     # Deflact real values
     real_price = price / cpi,
     real_local_tax =  tax / cpi,
     real_sales_tax =  taxs / cpi,
-    real_income_percapita = income / population / cpi
+    real_income_percapita = (income / population) / cpi
   )
 
 # Result
 cigarettes %>% 
-  select_if(is.numeric) %>% 
-  pairs()
+  GGally::ggpairs()
+
+price_plot = ggplot(
+  data = cigarettes, 
+  mapping = aes(x = log(real_price), y = log(packs), col = year)) +
+  # Add scatter plot
+  geom_point() +
+  # Add regression line
+  stat_smooth(method = 'lm', se = FALSE) +
+  # Mofify labels
+  labs(y = 'Consumed Packs (log)', x = 'Average Price (log)', title = 'Prices') +
+  theme_bw() +
+  # Remove legend
+  theme(legend.position = 'none')
+
+print(price_plot)
+
+income_plot = ggplot(
+  data = cigarettes, 
+  mapping = aes(x = log(real_income_percapita), y = log(packs), col = year)) +
+  # Add scatter plot
+  geom_point() +
+  # Add regression line
+  stat_smooth(method = 'lm', se = FALSE) +
+  # Mofify labels
+  labs(y = 'Consumed Packs (log)', x = 'Average Income (log)', title = 'Income percapita') +
+  theme_bw()
+
+print(income_plot)
+
+tax_plot = ggplot(
+  data = cigarettes, 
+  mapping = aes(x = log(real_local_tax), y = log(packs), col = year)) +
+  # Add scatter plot
+  geom_point() +
+  # Add regression line
+  stat_smooth(method = 'lm', se = FALSE) +
+  # Mofify labels
+  labs(y = 'Consumed Packs (log)', x = 'Average Tax (log)', title = 'Local Tax') +
+  theme_bw() +
+  # Remove legend
+  theme(legend.position = 'none')
+
+print(tax_plot)
+
+# Patchwork plot
+(price_plot + income_plot) / tax_plot
+
+# Multivariate lineal model
+lm_model = lm(
+  formula = log(packs) ~ log(real_price) + log(real_local_tax) +log(real_sales_tax) + log(real_income_percapita) + year,
+  data = cigarettes
+  )
+
+# Model summary
+summary(lm_model)
+
+# Model performance
+check_model(lm_model)
 
 
-# The machine learning framework ------------------------------------------
+# The glmnet framework ----------------------------------------------------
 # Install - load tidymodels                                                       
 if(require(tidymodels) == FALSE){                                                
   install.packages('tidymodels')                                                 
@@ -57,6 +120,94 @@ if(require(tidymodels) == FALSE){
 }else{                                                                          
   library(tidymodels)                                                            
 }
+
+# Install - load glmnet                                                       
+if(require(glmnet) == FALSE){                                                
+  install.packages('glmnet')                                                 
+  library(glmnet)                                                            
+}else{                                                                          
+  library(glmnet)                                                            
+}
+
+# Create a recipe
+recipe = recipe(
+  # Set a formula
+  formula = packs ~ .,
+  # Set input data
+  data = cigarettes
+) %>% 
+  step_log(all_numeric()) %>% 
+  step_dummy(year)
+
+
+
+# Ridge regression --------------------------------------------------------
+ridge_reg = linear_reg() %>% 
+  # Set engine
+  set_engine('glmnet') %>% 
+  # Set mode
+  set_mode('regression') %>% 
+  # Ridge setting (mixture = 0)
+  set_args(penalty = tune(), mixture = 0)
+
+# Behind ridge scene
+ridge_fit = fit(
+  object = ridge_reg, 
+  formula = log(packs) ~ .,
+  data = recipe %>% prep %>% juice
+  )
+
+# Plot
+ridge_plot = ridge_fit %>%
+  autoplot() +
+  # Agrega títulos
+  ggtitle('Ridge regularization') +
+  # Add hroizontal line
+  geom_hline(yintercept = 0, linewidth = 0.5, alpha = 0.2) +
+  #  Usa un tema predefinido
+  theme_bw() 
+
+
+# Lasso regression --------------------------------------------------------
+lasso_reg = linear_reg() %>% 
+  # Set engine
+  set_engine('glmnet') %>% 
+  # Set mode
+  set_mode('regression') %>% 
+  # Lasso setting (mixture = 1)
+  set_args(penalty = tune(), mixture = 1)
+
+# Lasso fitting
+lasso_fit = fit(
+  object = lasso_reg, 
+  formula = log(packs) ~ .,
+  data = recipe %>% prep %>% juice
+)
+
+# Plot
+lasso_plot = lasso_fit %>%
+  autoplot() +
+  # Add titles
+  ggtitle('Lasso regularization') +
+  # Add hroizontal line
+  geom_hline(yintercept = 0, linewidth = 0.5, alpha = 0.2) +
+  #  Set theme
+  theme_bw() 
+
+print(lasso_plot)
+
+ridge_plot + lasso_plot
+
+# Machine learning framework ----------------------------------------------
+glmnet_reg = linear_reg() %>% 
+  # Set engine
+  set_engine('glmnet') %>% 
+  # Set mode
+  set_mode('regression') %>% 
+  # Tunning hyperparameters
+  set_args(penalty = tune(), mixture = tune())
+
+
 # Data splitting for samples
 set.seed(123)
 smoke_split = initial_split(
@@ -69,35 +220,19 @@ smoke_split = initial_split(
 )
 
 # Get training and testing samples
-smoke_training = training(smoke_split)
-smoke_testing = testing(smoke_split)
+train = training(smoke_split)
+test = testing(smoke_split)
 
 # Create cross-validation folds
 set.seed(123)
-smoke_folds = vfold_cv(smoke_training, v = 3)
-
-# Create a recipe
-recipe = recipe(
-  # Set a formula
-  formula = packs ~ .,
-  # Set input data
-  data = smoke_testing
-) %>% 
-  update_role(id, new_role = 'id') %>% 
-  step_log(all_numeric()) %>% 
-  step_dummy(year)
-
-set.seed(123)
-linear_regression = linear_reg() %>% 
-  set_engine('lm') %>% 
-  set_mode('regression')
+folds = vfold_cv(train, v = 3)
 
 # Create a workflow
 lr_workflow = workflow() %>% 
   # Add your recipe
   add_recipe(recipe) %>% 
   # Add your model
-  add_model(linear_regression)
+  add_model(glmnet_reg)
 
 # Get parameters to tune
 lr_parameters = lr_workflow %>% 
@@ -105,12 +240,17 @@ lr_parameters = lr_workflow %>%
 
 # Create a tune grid
 lr_tuning = tune_grid(
+  # set Workflow
   object = lr_workflow,
-  resamples = smoke_folds,
-#  param_info = lr_parameters,
-  metrics = metric_set(yardstick::rmse),
+  # set Folds
+  resamples = folds,
+  # set hyperparameters
+  param_info = lr_parameters,
+  # Set metrics
+  metrics = metric_set(yardstick::rmse, yardstick::mae),
   control = control_grid(verbose = TRUE),
-  grid = 1
+  # Set grid (combinations of mixture and penalty to try)
+  grid = 100
 )
 
 # Collect metrics
@@ -121,7 +261,7 @@ tunning_metrics = lr_tuning %>%
 
 # Select the best model
 best_lr = lr_tuning %>%
-  select_best("rmse")
+  select_best(metric = "rmse")
 
 # Finalize the workflow
 final_lr = lr_workflow %>% 
@@ -143,108 +283,88 @@ print(metrics_lr)
 
 # Working with the trained model ------------------------------------------
 # Extract the trained model
-lr_trained = results_lr %>% 
-  extract_fit_parsnip() 
-
-print(lr_trained)
-
-# Summary
-lr_trained %>% 
-  pluck('fit') %>% 
-  summary()
-
-# Install - load performance                                                       
-if(require(performance) == FALSE){                                                
-  install.packages('performance')                                                 
-  library(performance)                                                            
-}else{                                                                          
-  library(performance)                                                            
-}
-
-check_model(lr_trained)
-
-# GLM-Net -----------------------------------------------------------------
-glm_net = linear_reg() %>% 
-  set_engine('glmnet') %>% 
-  set_mode('regression') %>% 
-  set_args(
-    penalty = tune(),
-    mixture = tune()
-  )
-
-# Create a workflow
-glmnet_workflow = workflow() %>% 
-  # Add your recipe
-  add_recipe(recipe) %>% 
-  # Add your model
-  add_model(glm_net)
-
-
-# Create a tune grid
-glmnet_tuning = tune_grid(
-  object = glmnet_workflow,
-  resamples = smoke_folds,
-  #  param_info = glmnet_parameters,
-  metrics = metric_set(yardstick::rmse),
-  control = control_grid(verbose = TRUE),
-  grid = 100
-)
-
-# Collect metrics
-tunning_metrics = glmnet_tuning %>%
-  collect_metrics() %>% 
-  # Arrange results from higher to lower
-  arrange(desc(mean))
-
-# Select the best model
-best_glmnet = glmnet_tuning %>%
-  select_best("rmse")
-
-print(best_glmnet)
-
-# Finalize the workflow
-final_glmnet = glmnet_workflow %>% 
-  finalize_workflow(best_glmnet)
-
-# Make a final fit
-results_glmnet = final_glmnet %>% 
-  last_fit(
-    split = smoke_split,
-    metrics = metric_set(yardstick::rmse)
-  )
-
-# Asses testing metrics
-metrics_glmnet = results_glmnet %>% 
-  collect_metrics()
-
-print(metrics_glmnet)
-
-
-# Working with the trained model ------------------------------------------
-# Extract the trained model
-glmnet_trained = results_glmnet %>% 
+glmnet_trained = results_lr %>% 
   extract_fit_parsnip() 
 
 print(glmnet_trained)
 
 # Summary
 glmnet_trained %>% 
-  pluck('fit') %>% 
+  pluck('fit') %>%
   summary()
 
-preproc = log_recipe %>% 
-  prep() %>% 
-  bake(new_data = cigarettes)
+# Get coefficients
+coefficients = glmnet_trained %>% 
+  extract_fit_engine() %>% 
+  # Create a tibble including values of cero
+  tidy(return_zeros = T)  
 
-# Make predictions
-predictions_tb =  augment(glmnet_trained, preproc)
-
-predictions_tb %>% 
-  ggplot(aes(x = packs, y = .pred)) +
+# Visually
+ggplot(
+  data = coefficients, 
+  mapping = aes(x = lambda, y = estimate)
+  ) +
+  # Scatter plit
   geom_point() +
+  # Add vertical line
+  geom_vline(
+    xintercept = pull(best_lr,penalty),
+    col = 'red', linetype = 'dashed'
+    ) + 
+  # Change scale ox x-axis
+  scale_x_log10() +
+  # facet by term
+  facet_wrap(~term, scales = 'free')
+
+# Compare with the original model
+summary(lm_model)
+
+# Make predictions using GLMNET
+glmnet_predictions =  augment(
+  x = glmnet_trained, 
+  new_data = recipe %>% prep %>% bake(new_data = cigarettes)
+  )
+
+# Make predictions using Linear Model
+lm_predictions =  augment(
+  x = lm_model, 
+  new_data = cigarettes
+)
+
+# Compare predictions with observed values
+ggplot() +
+  # GLMnet
+  geom_point(
+    data = glmnet_predictions,
+    aes(x = exp(packs), y = exp(.pred), col = 'GLMnet')
+  ) + 
+  # Linear model
+  geom_point(
+    data = lm_predictions,
+    aes(x = exp(`log(packs)`), y = exp(.fitted), col = 'Linar Model')
+  ) +
+  # Add vertical line
   geom_abline(slope = 1, col = 'red') +
+  # Add labels
+  labs(x = 'Observed', y = 'Predicted', col = 'Model') +
+  # Fix coordenates
   coord_obs_pred()  
 
-
+# Compare residuals
+ggplot() +
+  # GLMnet
+  geom_density(
+    data = glmnet_predictions,
+    aes(x = packs - .pred, fill = 'GLMnet'),
+    alpha = 0.5
+  ) + 
+  # Linear model
+  geom_density(
+    data = lm_predictions,
+    aes(x = `log(packs)` - .fitted, fill = 'Linar Model'),
+    alpha = 0.5
+  ) +
+  # Add labels
+  labs(x = 'Rediduals', y = 'Density', fill = 'Model') 
 
 

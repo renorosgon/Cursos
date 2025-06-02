@@ -17,12 +17,12 @@ if(require(sf) == FALSE){
 }else{                                                                          
   library(sf)                                                            
 }
-# Install - load ggsn                                                       
-if(require(ggsn) == FALSE){                                                
-  install.packages('ggsn')                                                 
-  library(ggsn)                                                            
+# Install - load ggspatial                                                       
+if(require(ggspatial) == FALSE){                                                
+  install.packages('ggspatial')                                                 
+  library(ggspatial)                                                            
 }else{                                                                          
-  library(ggsn)                                                            
+  library(ggspatial)                                                            
 }
 # Install - load patchwork                                                       
 if(require(patchwork) == FALSE){                                                
@@ -33,7 +33,7 @@ if(require(patchwork) == FALSE){
 }
 
 # Simple Features Geometries ----------------------------------------------
-# Points
+# Points 
 point_2D = st_point(c(1,2))
 str(point_2D)
 plot(point_2D)
@@ -91,7 +91,7 @@ str(multipolygon)
 plot(multipolygon, col = 'gray')
 
 # Geometry collection
-geometry_collection =- st_geometrycollection(list(multipoints, multilinestring, multipolygon))
+geometry_collection = st_geometrycollection(list(multipoints, multilinestring, multipolygon))
 str(geometry_collection)
 plot(geometry_collection, col ='gray')
 
@@ -103,11 +103,11 @@ plot(centroid, add = TRUE)
 
 
 # Create shp
-#write_sf(geometry_collection, 'example.shp')
+# write_sf(geometry_collection, 'example.shp')
 
 # Working with shapefiles -------------------------------------------------
 # Loading a shape file
-imuc = read_sf('data/imuc/colonias_imc2020.shp') %>% 
+imuc = read_sf('data/imuc') %>% 
   filter(CVE_ENT == '09')
 
 # What is this?
@@ -137,18 +137,42 @@ imuc %>%
     # Choropleth
     geom_sf(aes(fill = GM_2020)) +
     # Modify colors
-    scale_fill_viridis_d(option = 'B', direction =  -1) +
+    scale_fill_viridis_d(option = 'B', direction = 1) +
     # Add labels 
     labs(
       title = 'Indice de Marginación Urbana en CDMX',
       fill = 'Nivel de Marginación',
       caption = 'Elaboración propia con datos de CONAPO'
     ) +
-    # Add compass Rose
-    north(imuc, location = 'topright') +
-    # Add geographic scale
-    scalebar(imuc, transform = FALSE, dist_unit = 'km', dist = 5, 
-           location = "bottomleft", st.size = 3) +
+  # Add geográfic scale
+  annotation_scale(
+    # Location
+    location = "bl",
+    # Bar colors
+    bar_cols = c('black','white'),
+    # Text
+    text_family = 'Open Sans Semibold', text_col = 'black',
+    # Adjust vertically
+    pad_y = unit(0.03, "npc"),
+    line_width = 0.2
+  ) +
+  # Compass rose
+  annotation_north_arrow(
+    # Locarion
+    location = "bl",        
+    # Style
+    style = north_arrow_fancy_orienteering(
+      # Fill
+      fill = c('black','white'),
+      # Line
+      line_col = "black",
+      # Text
+      text_size = 8, text_family = 'Open Sans', text_col = 'black'
+    ),
+    # Adjust vertically
+    pad_y = unit(0.06, "npc"),
+    pad_x = unit(0.006, "npc")
+  ) +
    # Modify theme
     theme_minimal() +
     theme(
@@ -208,7 +232,7 @@ ggplot(imuc) +
 # Validity 
 # Simple feature validity refers to a number of properties that polygons should 
 # have, such as non-self intersecting, holes being inside polygons. 
-st_is_valid(imuc) 
+st_is_valid(imuc) %>% sum()
 
 imuc %>% 
   filter(!st_is_valid(imuc)) %>% 
@@ -237,11 +261,35 @@ ggplot(imuc) +
     fill = 'Nivel de Marginación',
     caption = 'Elaboración propia con datos de CONAPO'
   ) +
-  # Add compass Rose
-  north(imuc, location = 'topright') +
-  # Add geographic scale
-  scalebar(imuc, transform = TRUE, dist_unit = 'km', dist = 5, 
-           location = "bottomleft", st.size = 3) +
+  # Add geográfic scale
+  annotation_scale(
+    # Location
+    location = "bl",
+    # Bar colors
+    bar_cols = c('black','white'),
+    # Text
+    text_family = 'Open Sans Semibold', text_col = 'black',
+    # Adjust vertically
+    pad_y = unit(0.03, "npc"),
+    line_width = 0.2
+  ) +
+  # Compass rose
+  annotation_north_arrow(
+    # Locarion
+    location = "bl",        
+    # Style
+    style = north_arrow_fancy_orienteering(
+      # Fill
+      fill = c('black','white'),
+      # Line
+      line_col = "black",
+      # Text
+      text_size = 8, text_family = 'Open Sans', text_col = 'black'
+    ),
+    # Adjust vertically
+    pad_y = unit(0.06, "npc"),
+    pad_x = unit(0.006, "npc")
+  ) +
   # Modify theme
   theme_minimal() +
   theme(
@@ -299,13 +347,16 @@ ggplot(centro_agebs) +
   geom_sf_label(data = metro_stations, aes(label = NOMBRE), vjust = 1)
 
 # Distance Matrix
-distances = st_distance(metro_stations, metro_stations, ) 
+distances = st_distance(metro_stations, metro_stations) 
 rownames(distances) = pull(metro_stations, NOMBRE)
 colnames(distances) = pull(metro_stations, NOMBRE)
 distances
 
 # Buffering
-buffer = st_buffer(metro_stations, dist = units::as_units(500, 'meters')) %>% 
+buffer = st_buffer(
+  metro_stations, 
+  dist = units::as_units(1000, 'meters')
+  ) %>% 
   st_cast("LINESTRING")
 
 # Plotting points
@@ -344,4 +395,29 @@ ggplot(centro_agebs) +
     legend.position = c(0.125, 0.85),
     legend.key.height = unit(0.5,'cm'),
   )
+
+
+# Concatenar datos nuevos -------------------------------------------------
+# Leer datos del senso
+censo_2020 = readxl::read_excel('data/RESAGEBURB_09XLSX20.xlsx') %>% 
+  filter(NOM_LOC == "Total AGEB urbana") 
+
+# Seleccionar mi sf
+agebs %>% 
+  # Concatenar por la izquierda
+  left_join(
+    # Datos del censo
+    censo_2020,
+    # Donde estas columnas coincidan
+    by = c('CVE_ENT'='ENTIDAD', 'CVE_MUN'='MUN', 'CVE_LOC'='LOC','CVE_AGEB'='AGEB')
+    ) %>% 
+  # Transformar a numérico
+  mutate(P_15A17 = as.numeric(P_15A17)) %>% 
+  # Mapo
+  ggplot() +
+  geom_sf(aes(fill = P_15A17), col = NA)
+
+
+
+
 
