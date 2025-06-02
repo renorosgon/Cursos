@@ -73,7 +73,7 @@ mi_session = session(url = url, user_agent(user_agent))
 # Usa la sesión 
 busqueda = mi_session %>% 
   # Ejecuta la búsqueda
-  session_jump_to('buscador?text=libros+de+texto') %>% 
+  session_jump_to('buscador?text=jalisco') %>% 
   # Lee el documento html
   read_html() 
 
@@ -88,11 +88,11 @@ print(titulos)
 # Usa la sesión 
 busqueda = mi_session %>% 
   # Ejecuta la búsqueda
-  session_jump_to('buscador?page=2&text=libros+de+texto') %>% 
+  session_jump_to('buscador?page=2&text=jalisco') %>% 
   # Lee el documento html
   read_html() 
 
-titulos = buscador %>%
+titulos = busqueda %>%
   html_nodes(xpath = '//h2[@class="lr-list-row-row-news__title"]/a') %>%
   html_text() %>% 
   str_squish()
@@ -137,9 +137,9 @@ for (pagina in 1:paginas){
   # Usa la sesion
   buscador = mi_session %>%
     # Salta a la página del buscador
-    session_jump_to(url = paste0('buscador?page=', pagina, '&text=libros+de+texto'),
+    session_jump_to(url = paste0('buscador?page=', pagina, '&text=jalisco'),
                     # Agrega los encabezados
-                    add_headers('referer'='https://www.milenio.com/buscador?text=libros+de+texto')
+                    add_headers('referer'='https://www.milenio.com/buscador?text=jalisco')
     )
   
   # Lee el documento html
@@ -147,7 +147,7 @@ for (pagina in 1:paginas){
   
   # Extrae las urls de los articulos
   articulos = buscador_html %>%
-    html_nodes(xpath = '//h2[@class="lr-list-row-row-news__title"]/a/@href') %>%
+    html_nodes(xpath = '//h2/a/@href') %>% 
     html_text()
   
   #Itera sobre las urls
@@ -164,17 +164,23 @@ for (pagina in 1:paginas){
       
       # Extraer el titulo
       titulo = articulo_html %>%
-        html_nodes(xpath = '//h1[@class="nd-title-headline-title-headline-base__title"]') %>%
+        html_nodes(xpath = '//h1[contains(@class,"nd-title-headline-title-headline")]') %>%
         html_text()
       
       # Extraer la autoria
       autoria = articulo_html %>%
-        html_nodes(xpath = '//span[@class="author"]') %>%
-        html_text()
+        html_nodes(xpath = '//span[@class="author"] | //h2[@data-mrf-recirculation="Nota Autor"]/a/text()') %>%
+        html_text(trim = TRUE)
+      
+      # Imagen
+      imagen = articulo_html %>% 
+        html_nodes(xpath = '//img[@class="nd-media-detail-base__img"]/@src') %>% 
+        html_text() %>% 
+        str_c(collapse = '')
       
       # Extraer el texto
       texto = articulo_html %>%
-        html_nodes(xpath = '//div[@class="media-container news"]/p') %>%
+        html_nodes(xpath = '//div[@id="content-body"]/p//text()') %>% 
         html_text() %>%
         paste(collapse = " ")
       
@@ -188,6 +194,7 @@ for (pagina in 1:paginas){
         fuente = articulo_url,
         fecha = fecha,
         autoria = autoria,
+        imagen = imagen,
         titulo = titulo,
         texto = texto
       ) 
@@ -195,7 +202,7 @@ for (pagina in 1:paginas){
       articulos_tb = bind_rows(articulos_tb, fila)
       
       # Dar un respiro
-      Sys.sleep(runif(max = 0.05))
+      Sys.sleep(runif(n = 1, max = 0.05))
     }
   }
 }
@@ -204,4 +211,63 @@ for (pagina in 1:paginas){
 glimpse(articulos_tb)
 
 
+final = articulos_tb %>% 
+  mutate(  
+    medio = 'milenio_jalisco',
+    tipo_medio = "portal de noticias digital",
+    ubicacion = 'seccion',
+    jerarquia = 'cronológica',
+    fecha = as.Date(dmy_hms(fecha)),
+    autoria = str_trim(autoria, 'both'),
+    seccion = str_remove(str_extract(fuente, 'https://www.milenio.com/\\w+'), 'https://www.milenio.com/'),
+    genero_periodistico = ifelse(seccion == 'opinion', 'Opinión','Nota Informativva')
+  )  %>%
+  unique() %>% 
+  filter(
+    !seccion %in% c('deportes','ciencia','futbol'),
+    fecha == today()-2
+  ) %>% 
+  with_groups(
+    .groups = fecha,
+    mutate,
+    # Crear id por día
+    articulo_id = 1:n(),
+    articulo_id = case_when(
+      nchar(articulo_id) < 2 ~ paste0('00', articulo_id),
+      nchar(articulo_id) < 3 ~ paste0('0', articulo_id),
+      TRUE ~ as.character(articulo_id)
+    ),
+    articulo_id = paste(fecha, articulo_id, sep = '-'),
+  ) %>% 
+  mutate(
+    campaña = str_detect(texto,'campañas?'),
+    jalisco = str_detect(texto,'de Jalisco|de jalisco'),
+    candidatura = str_detect(texto,'[Cc]andidat[aoex]s?|[Cc]andidaturas?'),
+    candidata = str_detect(texto,'[Cc]andidatas?'),
+    gubernatura = str_detect(texto,'[Gg][ou]bernadora?|[Gg][ou]bernaturas?'),
+    gobernador = str_detect(texto,'[Gg]obernador'),
+    pablo_lemus_navarro = str_detect(texto,'[Pp]ablo [Ll]emus|[Ll]emus [Nn]avarro|[Ll]emus'),
+    claudia_delgadillo_gonzalez = str_detect(texto,'[Cc]laudia [Dd]elgadillo|[Dd]elgadillo [Gg]onzález|[Dd]elgadillo'),
+    laura_lorena_haro_ramirez = str_detect(texto,'[Ll]aura [Ll]orena [Hh]aro|[Ll]aura [Hh]aro|[Hh]aro [Rr]amírez|[Hh]aro'),
+    pri = str_detect(texto,'PRI'),
+    pan = str_detect(texto,'PAN'),
+    prd = str_detect(texto,'PRD'),
+    mc = str_detect(texto,'[Mm]ovimiento [Cc]iudadano|MC'),
+    morena = str_detect(texto,'MORENA|Morena'),
+    hagamos = str_detect(texto,'HAGAMOS|Hagamos'),
+    futuro = str_detect(texto,'FUTURO|Futuro'),
+    pt = str_detect(texto,'PT|Partido del Trabajo'),
+    pvem = str_detect(texto,'Partido Verde|PVEM'),
+    coalicion =  str_detect(texto,'[cC]oalición'),
+    alianza =  str_detect(texto,'[Aa]lianza'),
+    propuesta = str_detect(texto,'[pP]ropuestas?|[pP]ropone')
+  )  %>%  
+  mutate_if(is.logical, as.numeric) %>% 
+  filter(
+    !is.na(titulo),
+    pablo_lemus_navarro + claudia_delgadillo_gonzalez + laura_lorena_haro_ramirez > 0,
+  ) %>%
+  select(tipo_medio, medio, fecha, ubicacion, seccion, jerarquia, articulo_id, url = fuente, imagen, titulo, autoria, genero_periodistico, texto, campaña:propuesta) 
 
+
+write_excel_csv(final, 'milenio_marzo_01a09.csv')
