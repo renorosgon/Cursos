@@ -822,7 +822,7 @@ tax_model_time_plot = wealth_series %>%
 
 print(tax_model_time_plot)
 
-# Mobility Matrix
+ # Mobility Matrix
 tax_model_mobility = wealth_series %>% 
   # Keep period 300 (age = 30's) and 1000
   filter(time %in% c(300, 1000)) %>% 
@@ -1146,7 +1146,7 @@ print(growth_model_mobility)
 # Human capital endowment h follows a normal distribution, which determines the 
 # probability of obtaining the earnings in the form of a logit function
 #
-# Pr(εit =1)= exp(β0 + β1*h)/ 1+exp(β0 + β1*h)  ,where h∼N(0,σ) 
+# Pr(εit =1)= exp(β0 + β1*h)/ 1+exp(β0 + β1*h) ,where h∼N(0,σ) 
 #
 # In the logit function, β0 is equal to ln(1/(N-1)) such that it becomes the 
 # baseline case when everyone has zero human capital (h = 0), and β1 is the 
@@ -1708,7 +1708,8 @@ physical_capital_model_mobility = wealth_series %>%
   # Create matrix
   pivot_wider(names_from = quintile_end, values_from = n) %>% 
   # fill nas
-  mutate_if(is.numeric, coalesce, 0) 
+  mutate_if(is.numeric, coalesce, 0)  %>% 
+  select(quintile_start, I, II, III, IV, V)
 
 print(physical_capital_model_mobility)
 

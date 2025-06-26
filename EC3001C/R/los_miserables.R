@@ -269,18 +269,18 @@ dendograma = hclust(distancias, method = 'average')
 plot(dendograma)
 
 # Crear aglomerados
-clusters = cutree(dendograma, k = 3) %>% 
-  as_tibble(rownames = 'nombre') %>% 
+clusters = cutree(dendograma, k = 4) %>% 
+  as_tibble(rownames = 'name') %>% 
   rename(cluster = value)
 
 # Agregamos a nuestra lista de nodos
-nodos = nodos %>% 
-  left_join(clusters, by =  'nombre')
+nodos = nodes %>% 
+  left_join(clusters, by =  'name')
 
 # Agregamos a nuestra network
 network = network %>% 
   activate(nodes) %>% 
-  left_join(clusters, by = c('name'= 'nombre'))
+  left_join(clusters, by = c('name'))
 
 
 # Visualizando una network
@@ -288,12 +288,12 @@ ggraph(network) +
   # Agregar edges
   geom_edge_link(
     # Modificar esteticas de los edges
-    aes(alpha = value, col = intermediacion, filter = debil),
+    aes(alpha = value, col = edge_betweenness, filter = weak),
     # Modificar estilos de los edges
     show.legend = FALSE) +
   # Agregar nodos
   geom_node_point(
-    aes(size = importancia, col = factor(cluster)
+    aes(size = neighbors, col = factor(cluster)
     ),
     show.legend = FALSE
   ) +

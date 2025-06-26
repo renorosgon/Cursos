@@ -7,6 +7,7 @@
 # This adaptation was don by René Rosado González
 
 social_mobility_model <- function(
+    cadena = 1,
   # Set number of agents 
   num_agents = 1000, 
   # Set initial wealth
@@ -137,7 +138,8 @@ social_mobility_model <- function(
     # Change to long format keeping the id column intact
     gather(time, wealth, - id) %>% 
     # Remove the text from the time column
-    mutate(time = as.numeric(str_remove(time, 'wealth_')))
+    mutate(time = as.numeric(str_remove(time, 'wealth_'))) %>% 
+    filter(time >= 300, time %% 100 == 0)
   
   return(wealth_series)
 }

@@ -78,7 +78,7 @@ traffic %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Arial'),
     # Cambia los títulos
     axis.title = element_blank(),
   )
@@ -90,7 +90,7 @@ junction_1 = traffic %>%
 # Podemos replicar la gráfica anterior
 junction_1 %>% 
   # Usa las mismas variables
-  ggplot( aes( x = date_time, y = vehicles) ) +
+  ggplot( aes( x = date_time, y = log(vehicles)) ) +
   # Agrega una linea
   geom_line() +
   # Agrega títulos
@@ -103,7 +103,7 @@ junction_1 %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
     # Cambia los títulos
     axis.title = element_blank(),
   )
@@ -127,7 +127,7 @@ summary(modelo_ols)
 glance(modelo_ols)
 
 # Utiliza la función check_model para revisar los supuestos
-performance::check_model(modelo_ols)
+#performance::check_model(modelo_ols)
 
 # Agrega las predicciones del modelo 
 resultados_modelo_ols = modelo_ols %>% 
@@ -167,7 +167,35 @@ resultados_modelo_ols %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
+    # Cambia los títulos
+    axis.title = element_blank(),
+    # Posición de la leyenda
+    legend.position = 'bottom',
+    # Quita el título de la leyenda
+    legend.title = element_blank()
+  )
+
+# Realiza una gráfica del ajuste
+resultados_modelo_ols %>% 
+  ggplot(
+    # Esta estética se hereda a todas las geometrías
+    aes( x = vehicles - .fitted )
+  ) +
+  # Agrega un histograma con los valores estimados
+  geom_histogram(
+    col = 'black',
+    fill = 'darkblue'
+  ) +
+  scale_color_manual(values = c('black','darkblue')) +
+  # Agrega títulos
+  ggtitle('Residuales del Modelo Poisson') +
+  #  Usa un tema predefinido
+  theme_bw() +
+  # Haz modificaciones
+  theme(
+    # Cambia los textos
+    text = element_text(family = 'Avenir Next'),
     # Cambia los títulos
     axis.title = element_blank(),
     # Posición de la leyenda
@@ -206,7 +234,7 @@ resultados_modelo_ols %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
     # Quita el título de la leyenda
     legend.title = element_blank()
   )
@@ -336,7 +364,7 @@ resultados_modelo_ols %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
     # Cambia los títulos
     axis.title = element_blank(),
     # Posición de la leyenda
@@ -359,7 +387,9 @@ set.seed(35)
 # Separa los datos en dos conjuntos
 datos_split = pasado %>% 
   initial_split(
-    strata = vehicles
+    strata = vehicles,
+    # Proporcion de entrenamiento
+    prop = 3/4
   )
 
 # Extrae el conjunto de entrenamiento
@@ -403,7 +433,7 @@ ajuste_con_validacion  = modelo_ols_workflow %>%
 
 # Revisa las métricas de validación
 ajuste_con_validacion %>% 
-  collect_metrics(summarize = FALSE)
+  collect_metrics(summarize = TRUE) 
 
 # Selecciona el modelo final
 ajuste_ml_final = modelo_ols_workflow %>% 
@@ -411,6 +441,8 @@ ajuste_ml_final = modelo_ols_workflow %>%
 
 modelo_ml_final = ajuste_ml_final %>% 
   extract_fit_engine() 
+
+summary(modelo_ml_final)
 
 # Revisa como de desempeña el conjunto de entrenamiento
 rmse_entrenamiento = entrenamiento %>% 
@@ -496,7 +528,7 @@ ajuste_ml_final %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
     # Posición de la leyenda
     legend.position = 'bottom',
     # Quita el título de la leyenda
@@ -566,7 +598,7 @@ resultados %>%
     # Define las coordenadas
     x =as.POSIXct('2016-02-01'), y = 160,
     # Modifica la letra
-    family = 'Bebas Neue', size = 3) +
+    family = 'Avenir Next', size = 3) +
   # Agrega títulos
   ggtitle('Resultados de los Modelo OLS',
           subtitle = 'Número de vehículos por hora en la intersección 1') +
@@ -575,7 +607,7 @@ resultados %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
     # Cambia los títulos
     axis.title = element_blank(),
     # Posición de la leyenda
@@ -723,7 +755,7 @@ ajuste_poisson_final %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
     # Posición de la leyenda
     legend.position = 'bottom',
     # Quita el título de la leyenda
@@ -783,7 +815,7 @@ resultados_predicciones %>%
     # Define las coordenadas
     x =as.POSIXct('2016-01-01'), y = 160,
     # Modifica la letra
-    family = 'Bebas Neue', size = 5) +
+    family = 'Avenir Next', size = 5) +
   # Agrega títulos
   ggtitle('Resultados de los Modelos de Regresión',
           subtitle = 'Número de vehículos por hora en la intersección 1') +
@@ -792,7 +824,7 @@ resultados_predicciones %>%
   # Haz modificaciones
   theme(
     # Cambia los textos
-    text = element_text(family = 'Bebas Neue'),
+    text = element_text(family = 'Avenir Next'),
     # Cambia los títulos
     axis.title = element_blank(),
     # Posición de la leyenda
